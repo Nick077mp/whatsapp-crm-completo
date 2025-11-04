@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Plantillas - Plataforma de Mensajería{% endblock %}
+{% block content %}
+<div class="templates-container">
+    <div class="page-header">
+        <h2>Plantillas</h2>
+        {% if can_edit %}
+        <button class="btn btn-primary" onclick="showCreateTemplateModal()">+ Nueva Plantilla</button>
+        {% else %}
+        <div class="alert alert-info">
+            <strong>Modo de solo lectura:</strong> Solo los administradores pueden crear/editar plantillas.
+        </div>
+        {% endif %}
+    </div>
+    <div class="section-card">
+        <div class="templates-grid">
+            {% for template in templates %}
+            <div class="template-card">
+                <div class="template-header">
+                    <h4>{{ template.name }}</h4>
+                    {% if template.platform %}
+                    <span class="badge badge-{{ template.platform.name }}">{{ template.platform.name|title }}</span>
+                    {% else %}
+                    <span class="badge">Todas</span>
+                    {% endif %}
+                </div>
+                <div class="template-content">
+                    <p>{{ template.content|truncatewords:30 }}</p>
+                    {% if template.category %}
+                    <small class="text-muted">Categoría: {{ template.category }}</small>
+                    {% endif %}
+                </div>
+                <div class="template-footer">
+                    <small>{{ template.created_by.username }} - {{ template.created_at|date:"d/m/Y" }}</small>
+                    <div class="template-actions">
+                        <button class="btn btn-sm btn-primary" onclick="copyTemplate('{{ template.content|escapejs }}')">Copiar</button>
+                        {% if can_edit %}
+                        <button class="btn btn-sm btn-secondary" onclick="editTemplate({{ template.id }})">Editar</button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-center">No hay plantillas</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<div id="createTemplateModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Nueva Plantilla</h3>
+            <span class="close" onclick="closeModal()">&times;</span>
+        </div>
+        <form id="templateForm" onsubmit="createTemplate(event)">
+            <div class="form-group">
+                <label>Nombre:</label>
+                <input type="text" name="name" required>
+            </div>
+            <div class="form-group">
+                <label>Contenido:</label>
+                <textarea name="content" rows="6" required></textarea>
+            </div>
+            <div class="form-group">
+                <label>Categoría:</label>
+                <input type="text" name="category">
+            </div>
+            <div class="form-group">
+                <label>Plataforma:</label>
+                <select name="platform_id">
+                    <option value="">Todas</option>
+                    {% for platform in platforms %}
+                    <option value="{{ platform.id }}">{{ platform.name|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_css %}
+<style>
+.templates-grid {display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;}
+.template-card {border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 1rem;}
+.template-header {display: flex; justify-content: space-between; align-items: center;}
+.template-header h4 {margin: 0;}
+.template-content {flex: 1;}
+.template-footer {display: flex; justify-content: space-between; align-items: center; padding-top: 1rem; border-top: 1px solid var(--border-color);}
+</style>
+{% endblock %}
+{% block extra_js %}
+<script>
+function showCreateTemplateModal() {document.getElementById('createTemplateModal').style.display = 'block';}
+function closeModal() {document.getElementById('createTemplateModal').style.display = 'none';}
+function createTemplate(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    fetch('/api/templates/create/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: JSON.stringify({
+            name: formData.get('name'),
+            content: formData.get('content'),
+            category: formData.get('category'),
+            platform_id: formData.get('platform_id') || null
+        })
+    }).then(r => r.json()).then(d => {
+        if (d.success) {alert('Plantilla creada'); location.reload();}
+        else alert('Error: ' + d.error);
+    });
+}
+function copyTemplate(content) {
+    navigator.clipboard.writeText(content).then(() => alert('Copiado al portapapeles'));
+}
+</script>
+{% endblock %}
+

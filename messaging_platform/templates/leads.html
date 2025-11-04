@@ -1,0 +1,638 @@
+{% extends 'base.html' %}
+
+{% block title %}Leads - Plataforma de Mensajería{% endblock %}
+
+{% block content %}
+<div class="leads-container">
+    <div class="page-header">
+        <h2>Gestión de Leads</h2>
+        <!-- Botón de crear lead deshabilitado temporalmente -->
+    </div>
+
+    <!-- Estadísticas -->
+    <div class="leads-stats">
+        <div class="stat-card">
+            <div class="stat-number">{{ total_leads }}</div>
+            <div class="stat-label">Total de Leads</div>
+            <div class="stat-icon">📋</div>
+        </div>
+        <div class="stat-card sales">
+            <div class="stat-number">{{ sales_count }}</div>
+            <div class="stat-label">Ventas</div>
+            <div class="stat-icon">💰</div>
+        </div>
+        <div class="stat-card support">
+            <div class="stat-number">{{ support_count }}</div>
+            <div class="stat-label">Soporte</div>
+            <div class="stat-icon">🔧</div>
+        </div>
+        <div class="stat-card recovery">
+            <div class="stat-number">{{ recovery_count }}</div>
+            <div class="stat-label">Recuperación</div>
+            <div class="stat-icon">🔄</div>
+        </div>
+    </div>
+
+    <!-- Filtros inteligentes -->
+    <div class="filters-card">
+        <form method="get" class="filters-form" id="filtersForm">
+            <div class="filter-group">
+                <label>Tipo de Caso:</label>
+                <select name="case_type" id="caseTypeSelect" onchange="handleCaseTypeChange()">
+                    <option value="">Todos los tipos</option>
+                    {% for value, label in case_types %}
+                    <option value="{{ value }}" {% if request.GET.case_type == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>Estado:</label>
+                <select name="status" id="statusSelect" onchange="this.form.submit()" disabled>
+                    <option value="">Selecciona primero un tipo de caso</option>
+                </select>
+            </div>
+
+            <div class="filter-actions">
+                <button type="button" class="btn btn-warning" onclick="showClearConfirmation()">
+                    ⚠️ Limpiar Filtros
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Modal de confirmación para limpiar -->
+    <div id="clearConfirmModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h4>⚠️ Confirmar Limpieza</h4>
+            <p>¿Estás seguro de que quieres limpiar todos los filtros?</p>
+            <p><small>Esta acción mostrará todos los leads sin filtrar.</small></p>
+            <div class="modal-actions">
+                <button class="btn btn-danger" onclick="clearFilters()">Sí, Limpiar</button>
+                <button class="btn btn-secondary" onclick="closeClearConfirmModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de leads con scroll -->
+    <div class="section-card">
+        <div class="section-header">
+            <h3>📊 Lista de Leads</h3>
+            <small>Total: {{ total_leads }} leads encontrados</small>
+        </div>
+        <div class="leads-table-container">
+            <table class="leads-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Contacto</th>
+                        <th>Plataforma</th>
+                        <th>Tipo de Caso</th>
+                        <th>Estado</th>
+                        <th>Asignado a</th>
+                        <th>Fecha de Creación</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lead in leads %}
+                    <tr>
+                        <td>{{ lead.id }}</td>
+                        <td>
+                            <div class="contact-info">
+                                <strong>{{ lead.contact.display_name }}</strong>
+                                {% if lead.contact.phone %}
+                                <br><small class="text-muted">{{ lead.contact.phone }}</small>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ lead.contact.platform.name }}">
+                                {{ lead.contact.platform.name|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge badge-case-{{ lead.case_type }}">
+                                {{ lead.get_case_type_display }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="status-badge {{ lead.funnel_based_status_class }}">
+                                {{ lead.dynamic_status_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if lead.assigned_to %}
+                            <div class="agent-info">
+                                <strong>{{ lead.assigned_to.first_name|default:lead.assigned_to.username }}</strong>
+                                <br><small>{{ lead.assigned_to.get_role_display|default:"Agente" }}</small>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">No asignado</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ lead.created_at|date:"d/m/Y H:i" }}</td>
+                        <td>
+                            <div class="action-buttons">
+                                <a href="{% url 'lead_detail' lead.id %}" class="btn btn-sm btn-primary">
+                                    Ver Detalle
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center">No hay leads registrados</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de crear lead removido temporalmente -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Funciones del modal de crear lead removidas temporalmente
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Estados por tipo de embudo
+const funnelStates = {
+    'sales': [
+        {value: 'sales_initial', label: 'Chat Inicial'},
+        {value: 'sales_negotiation', label: 'Negociación'},
+        {value: 'sales_debate', label: 'Debate'},
+        {value: 'sales_closing', label: 'Finalización'}
+    ],
+    'support': [
+        {value: 'support_initial', label: 'Contacto Inicial'},
+        {value: 'support_process', label: 'En Proceso'},
+        {value: 'support_closing', label: 'Finalizando'}
+    ],
+    'recovery': [
+        {value: 'recovery_initial', label: 'Contacto Inicial'},
+        {value: 'recovery_evaluation', label: 'Evaluación'},
+        {value: 'recovery_proposal', label: 'Propuesta'},
+        {value: 'recovery_followup', label: 'Seguimiento'},
+        {value: 'recovery_closing', label: 'Cierre'}
+    ]
+};
+
+function handleCaseTypeChange() {
+    const caseTypeSelect = document.getElementById('caseTypeSelect');
+    const statusSelect = document.getElementById('statusSelect');
+    const selectedCaseType = caseTypeSelect.value;
+    
+    // Limpiar opciones actuales
+    statusSelect.innerHTML = '';
+    
+    if (selectedCaseType === '') {
+        // Sin tipo seleccionado
+        statusSelect.disabled = true;
+        statusSelect.innerHTML = '<option value="">Selecciona primero un tipo de caso</option>';
+        
+        // Solo enviar formulario si no estamos en la carga inicial y hubo un cambio real
+        if (!document.body.classList.contains('loading-initial')) {
+            document.getElementById('filtersForm').submit();
+        }
+    } else {
+        // Habilitar dropdown de estado
+        statusSelect.disabled = false;
+        
+        // Agregar opción "Todos"
+        statusSelect.innerHTML = '<option value="">Todos los estados</option>';
+        
+        // Agregar estados específicos del embudo
+        const states = funnelStates[selectedCaseType] || [];
+        states.forEach(state => {
+            const option = document.createElement('option');
+            option.value = state.value;
+            option.textContent = state.label;
+            // Mantener selección si existe
+            if (state.value === '{{ request.GET.status }}') {
+                option.selected = true;
+            }
+            statusSelect.appendChild(option);
+        });
+        
+        // Solo enviar formulario si no estamos en la carga inicial y hubo un cambio real
+        if (!document.body.classList.contains('loading-initial')) {
+            document.getElementById('filtersForm').submit();
+        }
+    }
+}
+
+function showClearConfirmation() {
+    document.getElementById('clearConfirmModal').style.display = 'flex';
+}
+
+function closeClearConfirmModal() {
+    document.getElementById('clearConfirmModal').style.display = 'none';
+}
+
+function clearFilters() {
+    window.location.href = '{% url "leads" %}';
+}
+
+// Inicializar estados al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    // Marcar que estamos en carga inicial
+    document.body.classList.add('loading-initial');
+    
+    const currentCaseType = '{{ request.GET.case_type }}';
+    if (currentCaseType) {
+        handleCaseTypeChange();
+    }
+    
+    // Remover marcador después de la inicialización
+    setTimeout(() => {
+        document.body.classList.remove('loading-initial');
+    }, 100);
+});
+
+// Cerrar modal al hacer clic fuera
+window.onclick = function(event) {
+    const clearModal = document.getElementById('clearConfirmModal');
+    
+    if (event.target == clearModal) {
+        clearModal.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Estadísticas de leads */
+.leads-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    position: relative;
+    border-left: 4px solid #3498db;
+    transition: transform 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-card.sales {
+    border-left-color: #27ae60;
+}
+
+.stat-card.support {
+    border-left-color: #3498db;
+}
+
+.stat-card.recovery {
+    border-left-color: #f39c12;
+}
+
+.stat-number {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-icon {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    opacity: 0.3;
+}
+
+/* Contenedor de tabla con scroll */
+.leads-table-container {
+    max-height: 600px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: white;
+}
+
+.leads-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.leads-table thead {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 10;
+}
+
+.leads-table thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+}
+
+.leads-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.leads-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.leads-table tbody tr:nth-child(even) {
+    background-color: #fdfdfd;
+}
+
+.leads-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e9ecef;
+    vertical-align: top;
+}
+
+.contact-info {
+    min-width: 150px;
+}
+
+.agent-info {
+    min-width: 120px;
+}
+
+.action-buttons {
+    white-space: nowrap;
+}
+
+/* Badges personalizados */
+.badge-case-sales {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-case-support {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.badge-case-recovery {
+    background: #ffeaa7;
+    color: #856404;
+}
+
+/* Headers de sección */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.section-header h3 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.section-header small {
+    color: #6c757d;
+    font-weight: normal;
+}
+
+/* Scrollbar personalizado */
+.leads-table-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.leads-table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.leads-table-container::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.leads-table-container::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Filtros mejorados */
+.filters-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 1.5rem;
+    align-items: end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.9rem;
+}
+
+.filter-group select {
+    padding: 10px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+    transition: all 0.2s ease;
+    min-width: 180px;
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.filter-group select:disabled {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
+    border-color: #dee2e6;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ff9800, #ff5722);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #f57c00, #e64a19);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+}
+
+/* Modal de confirmación */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.modal-content h4 {
+    color: #dc3545;
+    margin-bottom: 1rem;
+}
+
+.modal-content p {
+    margin-bottom: 1rem;
+    color: #495057;
+}
+
+.modal-content small {
+    color: #6c757d;
+    font-style: italic;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #c82333, #bd2130);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+    transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .leads-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .filters-form {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .filter-group select {
+        min-width: auto;
+    }
+    
+    .leads-table-container {
+        max-height: 400px;
+    }
+    
+    .leads-table thead th,
+    .leads-table tbody td {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+    
+    .modal-content {
+        padding: 1.5rem;
+        margin: 1rem;
+    }
+    
+    .modal-actions {
+        flex-direction: column;
+    }
+}
+</style>
+{% endblock %}
+

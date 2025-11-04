@@ -1,0 +1,1440 @@
+{% extends 'base.html' %}
+{% block title %}Bandeja de Entrada - Plataforma de Mensajería{% endblock %}
+{% block content %}
+<meta name="csrf-token" content="{{ csrf_token }}">
+<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+<div class="inbox-container">
+    <div class="page-header">
+        <h2>📥 Bandeja de Entrada</h2>
+        <p>Clasifica las nuevas conversaciones para organizarlas en sus respectivos embudos</p>
+    </div>
+
+    <!-- Estadísticas rápidas -->
+        <div class="inbox-stats">
+        <div class="stat-card">
+            <div class="stat-number">{{ total_unassigned }}</div>
+            <div class="stat-label">Total por Clasificar</div>
+            <div class="stat-icon">📋</div>
+        </div>
+        <div class="stat-card urgent">
+            <div class="stat-number">{{ unresponded_count }}</div>
+            <div class="stat-label">Sin Responder</div>
+            <div class="stat-icon">🔔</div>
+        </div>
+        <div class="stat-card info">
+                <div class="stat-number">{{ responded_count }}</div>
+            <div class="stat-label">Respondidas</div>
+            <div class="stat-icon">✅</div>
+        </div>
+    </div>
+
+    <!-- Buscador -->
+    <div class="search-section">
+        <div class="search-container">
+            <div class="search-box">
+                <input type="text" 
+                       id="searchInbox" 
+                       placeholder="🔍 Buscar por nombre o número de teléfono..."
+                       autocomplete="off">
+                <button id="clearInboxBtn" class="clear-btn" onclick="clearInboxSearch()" style="display: none;">
+                    ✕
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conversaciones por clasificar -->
+    <div class="conversations-section">
+        <div class="section-header">
+            <h3>🎯 Conversaciones por Clasificar</h3>
+            <p>Revisa cada conversación y asígnala al embudo correcto</p>
+        </div>
+        
+        <div class="conversations-grid" id="conversations-grid">
+            {% for conv in unassigned_conversations %}
+            <div class="conversation-card" data-conversation-id="{{ conv.id }}">
+                <div class="conversation-header">
+                    <div class="contact-info">
+                        <strong class="contact-name">{{ conv.contact.display_name }}</strong>
+                        <small class="platform-badge badge-{{ conv.contact.platform.name }}">
+                            {{ conv.contact.platform.name }}
+                        </small>
+                    </div>
+                    <div class="conversation-status">
+                        {% if not conv.is_answered %}
+                        <span class="status-badge urgent">🔔 Sin Responder</span>
+                        {% else %}
+                        <span class="status-badge responded">✅ Respondida</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="conversation-body">
+                    <div class="last-message">
+                        <p>{{ conv.last_message_preview|default:"Sin mensajes"|truncatewords:15 }}</p>
+                        <small class="message-time">{{ conv.last_message_at|date:"d/m/Y H:i" }}</small>
+                    </div>
+                    
+                    {% if conv.assigned_to %}
+                    <div class="assigned-info">
+                        <small>👤 Asignado a: {{ conv.assigned_to.username }}</small>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="conversation-actions">
+                    <!-- Asignación de Agente (requerida primero) -->
+                    <div class="agent-assignment">
+                        <select class="agent-selector" id="agentSelector_{{ conv.id }}" 
+                                onchange="assignAgent({{ conv.id }}, this.value)" 
+                                {% if not conv.assigned_to %}required{% endif %}>
+                            <option value="">{% if conv.assigned_to %}{{ conv.assigned_to.username }}{% else %}Seleccionar Agente{% endif %}</option>
+                            {% for agent in available_agents %}
+                            <option value="{{ agent.id }}" {% if conv.assigned_to and conv.assigned_to.id == agent.id %}selected{% endif %}>
+                                {{ agent.first_name|default:agent.username }} {{ agent.last_name|default:"" }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn-assign-agent" onclick="showAgentModal({{ conv.id }})">
+                            👤 Agente
+                        </button>
+                    </div>
+                    
+                    <!-- Clasificación de Embudo (requiere agente asignado) -->
+                    <div class="classification-buttons" id="classificationButtons_{{ conv.id }}">
+                        <button class="btn-classify btn-sales btn-compact {% if not conv.assigned_to %}disabled{% endif %}" 
+                                onclick="classifyConversation({{ conv.id }}, 'sales')"
+                                {% if not conv.assigned_to %}disabled title="Primero selecciona un agente"{% endif %}>
+                            💰 Ventas
+                        </button>
+                        <button class="btn-classify btn-support btn-compact {% if not conv.assigned_to %}disabled{% endif %}" 
+                                onclick="classifyConversation({{ conv.id }}, 'support')"
+                                {% if not conv.assigned_to %}disabled title="Primero selecciona un agente"{% endif %}>
+                            🔧 Soporte
+                        </button>
+                        <button class="btn-classify btn-recovery btn-compact {% if not conv.assigned_to %}disabled{% endif %}" 
+                                onclick="showRecoveryModalForConversation({{ conv.id }})"
+                                {% if not conv.assigned_to %}disabled title="Primero selecciona un agente"{% endif %}>
+                            🔄 Recuperación
+                        </button>
+                    </div>
+                    
+                    <button class="btn-secondary btn-view-chat btn-compact" onclick="viewConversation({{ conv.id }})">
+                        💬 Ver Chat
+                    </button>
+                </div>
+            </div>
+            {% empty %}
+            <div class="empty-inbox">
+                <div class="empty-icon">🎉</div>
+                <h3>¡Bandeja de entrada vacía!</h3>
+                <p>Todas las conversaciones han sido clasificadas correctamente.</p>
+                <small>Las nuevas conversaciones aparecerán aquí automáticamente</small>
+                <div class="empty-actions">
+                    <a href="{% url 'funnels' %}?type=sales" class="btn btn-primary">
+                        📈 Ver Embudo de Ventas
+                    </a>
+                    <a href="{% url 'funnels' %}?type=support" class="btn btn-outline">
+                        🛠️ Ver Embudo de Soporte
+                    </a>
+                    <a href="{% url 'funnels' %}?type=recovery" class="btn btn-outline">
+                        🔄 Ver Embudo de Recuperación
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Accesos rápidos -->
+    <div class="quick-access">
+        <h4>🚀 Accesos Rápidos</h4>
+        <div class="quick-buttons">
+            <a href="{% url 'funnels' %}?type=sales" class="quick-btn sales">
+                <div class="quick-icon">📈</div>
+                <div class="quick-text">
+                    <strong>Embudo de Ventas</strong>
+                    <small>Gestionar proceso de ventas</small>
+                </div>
+            </a>
+            <a href="{% url 'funnels' %}?type=support" class="quick-btn support">
+                <div class="quick-icon">🛠️</div>
+                <div class="quick-text">
+                    <strong>Embudo de Soporte</strong>
+                    <small>Gestionar tickets de soporte</small>
+                </div>
+            </a>
+            <a href="{% url 'chat' %}" class="quick-btn chat">
+                <div class="quick-icon">💬</div>
+                <div class="quick-text">
+                    <strong>Chat General</strong>
+                    <small>Ver todas las conversaciones</small>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación -->
+<div id="classifyModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h4>Confirmar Clasificación</h4>
+        <p id="classifyMessage"></p>
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="confirmClassify">Confirmar</button>
+            <button class="btn btn-secondary" id="cancelClassify">Cancelar</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.inbox-container {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.page-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.page-header h2 {
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    font-size: 2.5rem;
+}
+
+.page-header p {
+    color: #7f8c8d;
+    font-size: 1.2rem;
+}
+
+/* Estadísticas */
+.inbox-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    position: relative;
+    border-left: 4px solid #3498db;
+}
+
+.stat-card.urgent {
+    border-left-color: #e74c3c;
+}
+
+.stat-card.info {
+    border-left-color: #27ae60;
+}
+
+.stat-number {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-icon {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    opacity: 0.3;
+}
+
+/* Buscador */
+.search-section {
+    margin-bottom: 2rem;
+}
+
+.search-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 2rem;
+}
+
+.search-box {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 15px 50px 15px 20px;
+    border: 2px solid #e9ecef;
+    border-radius: 25px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    background: white;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.clear-btn {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.clear-btn:hover {
+    background: #f8f9fa;
+    color: #dc3545;
+}
+
+.no-results {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+.no-results p {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+}
+
+.no-results small {
+    font-size: 0.9rem;
+}
+
+/* Sección de conversaciones */
+.conversations-section {
+    margin-bottom: 3rem;
+}
+
+.section-header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.section-header h3 {
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.section-header p {
+    color: #7f8c8d;
+}
+
+.conversations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+}
+
+.conversation-card {
+    background: white;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    border-left: 4px solid #f39c12;
+    margin-bottom: 1rem;
+}
+
+.conversation-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.conversation-card.agent-assigned {
+    border-left-color: #28a745;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fff9 100%);
+}
+
+.conversation-card.agent-assigned:hover {
+    box-shadow: 0 4px 20px rgba(40, 167, 69, 0.2);
+}
+
+.conversation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.contact-name {
+    color: #2c3e50;
+    font-size: 1.1rem;
+}
+
+.platform-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    margin-left: 0.5rem;
+}
+
+.badge-whatsapp { background: #25d366; color: white; }
+.badge-telegram { background: #0088cc; color: white; }
+.badge-email { background: #ea4335; color: white; }
+
+.status-badge {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.status-badge.urgent {
+    background: #ffe6e6;
+    color: #e74c3c;
+}
+
+.status-badge.responded {
+    background: #e8f5e8;
+    color: #27ae60;
+}
+
+.conversation-body {
+    margin-bottom: 1rem;
+}
+
+.last-message {
+    background: #f8f9fa;
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+}
+
+.last-message p {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+}
+
+.message-time {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.assigned-info {
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+.conversation-actions {
+    border-top: 1px solid #eee;
+    padding-top: 1rem;
+}
+
+.classification-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.btn-classify {
+    flex: 1;
+    padding: 0.8rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-classify.btn-sales {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    color: white;
+}
+
+.btn-classify.btn-support {
+    background: linear-gradient(135deg, #3498db, #5dade2);
+    color: white;
+}
+
+.btn-classify.btn-recovery {
+    background: linear-gradient(135deg, #e67e22, #f39c12);
+    color: white;
+}
+
+.btn-classify:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.btn-classify.disabled,
+.btn-classify:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+    background: #6c757d !important;
+}
+
+.btn-classify.disabled:hover,
+.btn-classify:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Botones compactos */
+.btn-compact {
+    padding: 0.5rem 0.8rem !important;
+    font-size: 0.85rem !important;
+    min-height: auto !important;
+}
+
+.btn-classify.btn-compact {
+    flex: none;
+    min-width: 80px;
+}
+
+/* Asignación de agente */
+.agent-assignment {
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.agent-selector {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: white;
+}
+
+.btn-assign-agent {
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.btn-assign-agent:hover {
+    background: linear-gradient(135deg, #8e44ad, #7d3c98);
+    transform: translateY(-1px);
+}
+
+.btn-view-chat {
+    width: 100%;
+    padding: 0.6rem;
+    background: #ecf0f1;
+    color: #2c3e50;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-view-chat:hover {
+    background: #d5dbdb;
+}
+
+/* Bandeja vacía */
+.empty-inbox {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 4rem;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 16px;
+    border: 2px dashed #dee2e6;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.empty-inbox h3 {
+    color: #27ae60;
+    margin-bottom: 1rem;
+}
+
+.empty-inbox p {
+    color: #7f8c8d;
+    margin-bottom: 0.5rem;
+}
+
+.empty-inbox small {
+    color: #adb5bd;
+    font-style: italic;
+}
+
+.empty-actions {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Accesos rápidos */
+.quick-access {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.quick-access h4 {
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.quick-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.quick-btn {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.quick-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.quick-btn.sales:hover { border-color: #27ae60; }
+.quick-btn.support:hover { border-color: #3498db; }
+.quick-btn.chat:hover { border-color: #9b59b6; }
+
+.quick-icon {
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+.quick-text strong {
+    display: block;
+    color: #2c3e50;
+    margin-bottom: 0.2rem;
+}
+
+.quick-text small {
+    color: #7f8c8d;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+.modal-actions {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .inbox-container {
+        padding: 1rem;
+    }
+    
+    .conversations-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .classification-buttons {
+        flex-direction: column;
+    }
+    
+    .quick-buttons {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Estilos específicos para el modal de recuperación */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.4);
+}
+
+.modal .modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal .close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal .close:hover {
+    color: black;
+}
+
+.modal .form-group {
+    margin-bottom: 15px;
+}
+
+.modal .form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.modal .form-group select,
+.modal .form-group textarea,
+.modal .form-group input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.modal .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.modal .form-group select:focus,
+.modal .form-group textarea:focus,
+.modal .form-group input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+/* Ajustes para clasificación con 3 botones */
+.classification-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+    .classification-buttons {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    
+    .btn-classify {
+        padding: 0.6rem;
+        font-size: 0.9rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentConversationId = null;
+let currentFunnelType = null;
+
+function classifyConversation(conversationId, funnelType) {
+    // Verificar que haya un agente asignado
+    const selector = document.getElementById(`agentSelector_${conversationId}`);
+    const agentId = selector ? selector.value : null;
+    
+    if (!agentId) {
+        showNotification('Primero debes asignar un agente para clasificar la conversación', 'error');
+        return;
+    }
+    
+    currentConversationId = conversationId;
+    currentFunnelType = funnelType;
+    
+    const funnelName = funnelType === 'sales' ? 'Ventas' : (funnelType === 'support' ? 'Soporte' : 'Recuperación');
+    document.getElementById('classifyMessage').textContent = 
+        `¿Estás seguro de que quieres clasificar esta conversación como ${funnelName}?`;
+    
+    document.getElementById('classifyModal').style.display = 'flex';
+}
+
+function viewConversation(conversationId) {
+    window.open(`/chat/${conversationId}/`, '_blank');
+}
+
+// Event listeners
+document.getElementById('confirmClassify').addEventListener('click', function() {
+    if (currentConversationId && currentFunnelType) {
+        assignToFunnel(currentConversationId, currentFunnelType, currentFunnelType + '_initial');
+    }
+});
+
+document.getElementById('cancelClassify').addEventListener('click', function() {
+    document.getElementById('classifyModal').style.display = 'none';
+    currentConversationId = null;
+    currentFunnelType = null;
+});
+
+// Función para asignar a embudo (reutilizada del funnels.html)
+function assignToFunnel(conversationId, funnelType, stage) {
+    fetch(`{% url 'api_update_conversation_funnel' 0 %}`.replace('0', conversationId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            funnel_type: funnelType,
+            funnel_stage: stage
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remover la conversación de la vista
+            const card = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+            if (card) {
+                card.style.transition = 'all 0.5s ease';
+                card.style.transform = 'translateX(100%)';
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    card.remove();
+                    
+                    // Si no quedan más conversaciones, recargar la página para mostrar el estado vacío
+                    if (document.querySelectorAll('[data-conversation-id]').length === 0) {
+                        location.reload();
+                    }
+                }, 500);
+            }
+            
+            // Cerrar modal
+            document.getElementById('classifyModal').style.display = 'none';
+            currentConversationId = null;
+            currentFunnelType = null;
+            
+            // Mostrar mensaje de éxito
+            showNotification(`Conversación clasificada como ${funnelType === 'sales' ? 'Ventas' : 'Soporte'} exitosamente`, 'success');
+        } else {
+            showNotification('Error al clasificar la conversación', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al clasificar la conversación', 'error');
+    });
+}
+
+function showNotification(message, type) {
+    // Crear y mostrar notificación
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        color: white;
+        font-weight: bold;
+        z-index: 1001;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    `;
+    
+    if (type === 'success') {
+        notification.style.background = '#27ae60';
+    } else {
+        notification.style.background = '#e74c3c';
+    }
+    
+    document.body.appendChild(notification);
+    
+    // Mostrar
+    setTimeout(() => notification.style.opacity = '1', 100);
+    
+    // Ocultar después de 3 segundos
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// Variable global para almacenar el ID de conversación del modal
+let currentConversationIdForRecovery = null;
+
+function showRecoveryModalForConversation(conversationId) {
+    currentConversationIdForRecovery = conversationId;
+    document.getElementById('recoveryModalInbox').style.display = 'block';
+}
+
+function closeRecoveryModalInbox() {
+    document.getElementById('recoveryModalInbox').style.display = 'none';
+    currentConversationIdForRecovery = null;
+}
+
+// Cerrar modal al hacer clic fuera de él
+window.onclick = function(event) {
+    const modal = document.getElementById('recoveryModalInbox');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+        currentConversationIdForRecovery = null;
+    }
+}
+
+// Manejar envío del formulario de recuperación desde inbox
+document.addEventListener('DOMContentLoaded', function() {
+    const recoveryForm = document.getElementById('recoveryFormInbox');
+    if (recoveryForm) {
+        recoveryForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (!currentConversationIdForRecovery) {
+                showNotification('Error: No se pudo identificar la conversación', 'error');
+                return;
+            }
+            
+            const formData = {
+                conversation_id: currentConversationIdForRecovery,
+                reason: document.getElementById('reasonInbox').value,
+                reason_notes: document.getElementById('reason_notesInbox').value,
+                recovery_strategy: document.getElementById('recovery_strategyInbox').value,
+                target_recovery_date: document.getElementById('target_recovery_dateInbox').value || null
+            };
+            
+            // Método más simple para obtener CSRF token
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                             getCookie('csrftoken') || 
+                             document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+            
+            console.log('Enviando datos:', formData);
+            console.log('CSRF Token encontrado:', !!csrfToken);
+            console.log('CSRF Token valor:', csrfToken);
+            
+            if (!csrfToken) {
+                showNotification('Error: Token CSRF no encontrado. Recarga la página.', 'error');
+                return;
+            }
+            
+            fetch('/api/recovery-cases/create/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'  // Importante para Django
+                },
+                body: JSON.stringify(formData),
+                credentials: 'same-origin'  // Incluir cookies de sesión
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Response data:', data);
+                if (data.success) {
+                    showNotification('Caso de recuperación creado exitosamente', 'success');
+                    closeRecoveryModalInbox();
+                    
+                    // Remover la tarjeta de conversación de la vista
+                    const conversationCard = document.querySelector(`[data-conversation-id="${currentConversationIdForRecovery}"]`);
+                    if (conversationCard) {
+                        conversationCard.style.opacity = '0';
+                        setTimeout(() => {
+                            conversationCard.remove();
+                            updateInboxStats();
+                        }, 300);
+                    }
+                } else {
+                    console.error('API returned error:', data.error);
+                    showNotification('Error: ' + (data.error || 'Error desconocido'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                showNotification('Error de conexión: ' + error.message, 'error');
+            });
+        });
+    }
+});
+
+function updateInboxStats() {
+    // Actualizar contadores después de clasificar conversaciones
+    const remainingCards = document.querySelectorAll('.conversation-card').length;
+    const statCards = document.querySelectorAll('.inbox-stats .stat-card .stat-number');
+    if (statCards && statCards.length >= 3) {
+        // Total por clasificar (index 0)
+        statCards[0].textContent = remainingCards;
+        // Sin responder (index 1) -> recalcular contando tarjetas con badge urgente
+        const unresponded = document.querySelectorAll('.conversation-card .status-badge.urgent').length;
+        statCards[1].textContent = unresponded;
+        // Respondidas (index 2)
+        statCards[2].textContent = Math.max(remainingCards - unresponded, 0);
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Función alternativa para obtener CSRF token desde el DOM
+function getCSRFToken() {
+    // Intentar obtener desde cookie primero
+    let token = getCookie('csrftoken');
+    
+    // Si no está en cookie, intentar desde meta tag
+    if (!token) {
+        const metaTag = document.querySelector('meta[name=csrf-token]');
+        if (metaTag) {
+            token = metaTag.getAttribute('content');
+        }
+    }
+    
+    // Si no está en meta, intentar desde input hidden
+    if (!token) {
+        const csrfInput = document.querySelector('input[name=csrfmiddlewaretoken]');
+        if (csrfInput) {
+            token = csrfInput.value;
+        }
+    }
+    
+    console.log('CSRF Token encontrado:', token ? 'Sí' : 'No');
+    return token;
+}
+
+// Funciones para manejo de asignación de agentes
+function assignAgent(conversationId, agentId) {
+    if (!agentId) {
+        showNotification('Por favor selecciona un agente', 'error');
+        return;
+    }
+    
+    fetch(`/api/conversations/${conversationId}/assign-agent/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+        },
+        body: JSON.stringify({
+            agent_id: agentId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`Conversación asignada a ${data.agent_name}`, 'success');
+            
+            // Habilitar botones de clasificación
+            const classificationButtons = document.getElementById(`classificationButtons_${conversationId}`);
+            if (classificationButtons) {
+                // Habilitar todos los botones dentro
+                const buttons = classificationButtons.querySelectorAll('button');
+                buttons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.classList.remove('disabled');
+                    btn.removeAttribute('title');
+                });
+            }
+            
+            // Actualizar texto del selector
+            const selector = document.getElementById(`agentSelector_${conversationId}`);
+            if (selector) {
+                selector.querySelector('option[value=""]').textContent = data.agent_name;
+            }
+            
+            // Actualizar información visual de agente asignado
+            const conversationCard = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+            if (conversationCard) {
+                // Agregar indicador visual de que ya tiene agente asignado
+                conversationCard.classList.add('agent-assigned');
+                
+                // Buscar si ya existe la información de agente asignado, si no, crearla
+                let assignedInfo = conversationCard.querySelector('.assigned-info');
+                if (!assignedInfo) {
+                    assignedInfo = document.createElement('div');
+                    assignedInfo.className = 'assigned-info';
+                    const conversationBody = conversationCard.querySelector('.conversation-body');
+                    conversationBody.appendChild(assignedInfo);
+                }
+                assignedInfo.innerHTML = `<small>👤 Asignado a: ${data.agent_name}</small>`;
+            }
+        } else {
+            showNotification('Error al asignar agente: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al asignar agente', 'error');
+    });
+}
+
+function showAgentModal(conversationId) {
+    // Esta función podría abrir un modal más detallado si fuera necesario
+    // Por ahora, el selector inline es suficiente
+    const selector = document.getElementById(`agentSelector_${conversationId}`);
+    if (selector) {
+        selector.focus();
+    }
+}
+
+// Clasificación sin requerir agente asignado: soporta flujos rápidos de triage
+
+// Variables para búsqueda en inbox
+let originalInboxContent = '';
+let searchInboxTimeout;
+let currentInboxSearchQuery = '';
+
+// Funciones de búsqueda en inbox
+function searchInboxConversations(query) {
+    console.log('Buscando:', query);
+    if (query.length < 2) {
+        console.log('Query muy corto, limpiando resultados');
+        displayInboxSearchResults([], query);
+        return;
+    }
+
+    console.log('Llamando a API:', `/api/search_unassigned/?q=${encodeURIComponent(query)}`);
+    fetch(`/api/search_unassigned/?q=${encodeURIComponent(query)}`)
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.success) {
+            console.log('Conversations found:', data.conversations.length);
+            displayInboxSearchResults(data.conversations, query);
+        } else {
+            console.log('Error in response:', data);
+            showInboxSearchError();
+        }
+    })
+    .catch(error => {
+        console.error('Fetch error:', error);
+        showInboxSearchError();
+    });
+}
+
+function displayInboxSearchResults(conversations, query) {
+    const conversationsGrid = document.getElementById('conversations-grid');
+    
+    if (conversations.length === 0) {
+        conversationsGrid.innerHTML = `
+            <div class="no-results">
+                <p>No se encontraron conversaciones para "${query}"</p>
+                <small>Intenta con otro término de búsqueda</small>
+            </div>
+        `;
+        return;
+    }
+    
+    // Cargar agentes disponibles primero
+    fetch('/api/agents/list/')
+    .then(response => response.json())
+    .then(agentData => {
+        let html = '';
+        conversations.forEach(conv => {
+            const statusBadge = !conv.is_answered ? 
+                '<span class="status-badge urgent">🔔 Sin Responder</span>' :
+                '<span class="status-badge responded">✅ Respondida</span>';
+            
+            const assignedInfo = conv.assigned_to_name ? 
+                `<div class="assigned-info">
+                    <small>👤 Asignado a: ${conv.assigned_to_name}</small>
+                </div>` : '';
+
+            // Generar opciones de agentes
+            let agentOptions = `<option value="">${conv.assigned_to_name || 'Seleccionar Agente'}</option>`;
+            if (agentData.success) {
+                agentData.agents.forEach(agent => {
+                    const selected = conv.assigned_to_name && conv.assigned_to_name === agent.username ? 'selected' : '';
+                    agentOptions += `<option value="${agent.id}" ${selected}>${agent.display_name}</option>`;
+                });
+            }
+
+            html += `
+                <div class="conversation-card" data-conversation-id="${conv.id}">
+                    <div class="conversation-header">
+                        <div class="contact-info">
+                            <strong class="contact-name">${conv.contact_name}</strong>
+                            <small class="platform-badge badge-${conv.platform}">${conv.platform}</small>
+                        </div>
+                        <div class="conversation-status">
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    
+                    <div class="conversation-body">
+                        <div class="last-message">
+                            <p>${conv.last_message_preview || 'Sin mensajes'}</p>
+                            <small class="message-time">${conv.last_message_at}</small>
+                        </div>
+                        ${assignedInfo}
+                    </div>
+                    
+                    <div class="conversation-actions">
+                        <div class="agent-assignment">
+                            <select class="agent-selector" id="agentSelector_${conv.id}" 
+                                    onchange="assignAgent(${conv.id}, this.value)">
+                                ${agentOptions}
+                            </select>
+                            <button class="btn-assign-agent" onclick="showAgentModal(${conv.id})">
+                                👤 Agente
+                            </button>
+                        </div>
+                        
+                        <div class="classification-buttons" id="classificationButtons_${conv.id}">
+                            <button class="btn-classify btn-sales btn-compact ${conv.assigned_to_name ? '' : 'disabled'}" 
+                                    onclick="classifyConversation(${conv.id}, 'sales')"
+                                    ${conv.assigned_to_name ? '' : 'disabled title="Primero selecciona un agente"'}>
+                                💰 Ventas
+                            </button>
+                            <button class="btn-classify btn-support btn-compact ${conv.assigned_to_name ? '' : 'disabled'}" 
+                                    onclick="classifyConversation(${conv.id}, 'support')"
+                                    ${conv.assigned_to_name ? '' : 'disabled title="Primero selecciona un agente"'}>
+                                🔧 Soporte
+                            </button>
+                            <button class="btn-classify btn-recovery btn-compact ${conv.assigned_to_name ? '' : 'disabled'}" 
+                                    onclick="showRecoveryModalForConversation(${conv.id})"
+                                    ${conv.assigned_to_name ? '' : 'disabled title="Primero selecciona un agente"'}>
+                                🔄 Recuperación
+                            </button>
+                        </div>
+                        
+                        <button class="btn-secondary btn-view-chat btn-compact" onclick="viewConversation(${conv.id})">
+                            💬 Ver Chat
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        conversationsGrid.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Error cargando agentes:', error);
+        // Mostrar resultados sin agentes si hay error
+        let html = '';
+        conversations.forEach(conv => {
+            const statusBadge = !conv.is_answered ? 
+                '<span class="status-badge urgent">🔔 Sin Responder</span>' :
+                '<span class="status-badge responded">✅ Respondida</span>';
+
+            html += `
+                <div class="conversation-card" data-conversation-id="${conv.id}">
+                    <div class="conversation-header">
+                        <div class="contact-info">
+                            <strong class="contact-name">${conv.contact_name}</strong>
+                            <small class="platform-badge badge-${conv.platform}">${conv.platform}</small>
+                        </div>
+                        <div class="conversation-status">
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    
+                    <div class="conversation-body">
+                        <div class="last-message">
+                            <p>${conv.last_message_preview || 'Sin mensajes'}</p>
+                            <small class="message-time">${conv.last_message_at}</small>
+                        </div>
+                    </div>
+                    
+                    <div class="conversation-actions">
+                        <button class="btn-secondary btn-view-chat btn-compact" onclick="viewConversation(${conv.id})">
+                            💬 Ver Chat
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        conversationsGrid.innerHTML = html;
+    });
+}
+
+function showInboxSearchError() {
+    const conversationsGrid = document.getElementById('conversations-grid');
+    conversationsGrid.innerHTML = `
+        <div class="no-results">
+            <p>Error al realizar la búsqueda</p>
+            <small>Por favor intenta de nuevo</small>
+        </div>
+    `;
+}
+
+function clearInboxSearch() {
+    const searchInput = document.getElementById('searchInbox');
+    const conversationsGrid = document.getElementById('conversations-grid');
+    const clearBtn = document.getElementById('clearInboxBtn');
+    
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    conversationsGrid.innerHTML = originalInboxContent;
+    currentInboxSearchQuery = '';
+    
+    searchInput.focus();
+}
+
+// Configurar búsqueda en tiempo real para inbox
+document.addEventListener('DOMContentLoaded', function() {
+    const conversationsGrid = document.getElementById('conversations-grid');
+    originalInboxContent = conversationsGrid.innerHTML;
+    
+    const searchInput = document.getElementById('searchInbox');
+    const clearBtn = document.getElementById('clearInboxBtn');
+    
+    searchInput.addEventListener('input', function(e) {
+        const query = e.target.value.trim();
+        currentInboxSearchQuery = query;
+        
+        if (query.length > 0) {
+            clearBtn.style.display = 'block';
+        } else {
+            clearBtn.style.display = 'none';
+            conversationsGrid.innerHTML = originalInboxContent;
+            return;
+        }
+        
+        // Limpiar timeout anterior
+        clearTimeout(searchInboxTimeout);
+        
+        // Buscar después de 300ms de inactividad
+        searchInboxTimeout = setTimeout(() => {
+            if (currentInboxSearchQuery === query) {
+                searchInboxConversations(query);
+            }
+        }, 300);
+    });
+    
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            clearInboxSearch();
+        }
+    });
+});
+</script>
+
+<!-- Modal para Caso de Recuperación en Inbox -->
+<div id="recoveryModalInbox" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeRecoveryModalInbox()">&times;</span>
+        <h2>🔄 Clasificar como Recuperación</h2>
+        <p>Marca este cliente para el embudo de recuperación</p>
+        
+        <form id="recoveryFormInbox">
+            <div class="form-group">
+                <label for="reasonInbox">Razón de la pérdida:</label>
+                <select id="reasonInbox" name="reason" required>
+                    <option value="">Selecciona una razón</option>
+                    <option value="price_objection">Objeción de Precio</option>
+                    <option value="competitor">Se fue a la Competencia</option>
+                    <option value="timing">Mal Momento</option>
+                    <option value="feature_missing">Falta de Funcionalidad</option>
+                    <option value="service_issue">Problema de Servicio</option>
+                    <option value="communication">Falla de Comunicación</option>
+                    <option value="other">Otro</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="reason_notesInbox">Detalles específicos:</label>
+                <textarea id="reason_notesInbox" name="reason_notes" placeholder="Describe los detalles de la situación..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="recovery_strategyInbox">Estrategia de recuperación:</label>
+                <textarea id="recovery_strategyInbox" name="recovery_strategy" placeholder="¿Cómo planeas recuperar a este cliente?"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="target_recovery_dateInbox">Fecha objetivo de recuperación:</label>
+                <input type="date" id="target_recovery_dateInbox" name="target_recovery_date">
+            </div>
+            
+            <div style="text-align: right; margin-top: 20px;">
+                <button type="button" class="btn btn-outline" onclick="closeRecoveryModalInbox()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Crear Caso de Recuperación</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

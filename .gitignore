@@ -1,0 +1,81 @@
+# Dependencias
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+
+# Archivos de configuración sensibles
+*.env
+.env
+.env.local
+.env.production
+config/settings.py
+!config/settings.py.example
+db.sqlite3
+*.sqlite3
+
+# Archivos de autenticación WhatsApp
+whatsapp_bridge/auth_info/
+whatsapp_bridge/auth_info_backup*/
+whatsapp_bridge/media/
+whatsapp_bridge/*.session
+
+# Archivos de Django
+messaging_platform/db.sqlite3
+messaging_platform/media/
+messaging_platform/static/
+messaging_platform/staticfiles/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos temporales
+tmp/
+temp/
+.tmp/
+
+# PM2
+.pm2/
+
+# Certificados SSL
+*.pem
+*.key
+*.crt
+
+# Backups
+*.bak
+*.backup
+backup_*
+archivos_driveria_actualizados.zip*

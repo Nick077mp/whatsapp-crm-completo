@@ -1,0 +1,71 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}Driveria CRM{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=3.0">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if user.is_authenticated %}
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <img src="{% static 'img/logo-header.svg' %}" alt="Driveria" />
+        </div>
+        <ul class="navbar-menu">
+            <li><a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a></li>
+            <li><a href="{% url 'inbox' %}" class="{% if request.resolver_match.url_name == 'inbox' %}active{% endif %}">📥 Bandeja</a></li>
+            <li><a href="{% url 'chat' %}" class="{% if request.resolver_match.url_name == 'chat' %}active{% endif %}">💬 Chats</a></li>
+            
+            <!-- Admin ve todo -->
+            {% if user.role == 'admin' or user.is_superuser %}
+            <li><a href="{% url 'leads' %}" class="{% if request.resolver_match.url_name == 'leads' %}active{% endif %}">🎯 Leads</a></li>
+            <li><a href="{% url 'templates' %}" class="{% if request.resolver_match.url_name == 'templates' %}active{% endif %}">📝 Plantillas</a></li>
+            <li><a href="{% url 'funnels' %}" class="{% if request.resolver_match.url_name == 'funnels' %}active{% endif %}">🔄 Embudos</a></li>
+            <li><a href="{% url 'reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}">📈 Reportes</a></li>
+            <li><a href="/admin/" target="_blank">⚙️ Admin</a></li>
+            
+            <!-- Solo para usuarios de ventas/recuperación (no admin) -->
+            {% elif user.role == 'sales' %}
+            <li><a href="{% url 'leads' %}" class="{% if request.resolver_match.url_name == 'leads' %}active{% endif %}">🎯 Leads</a></li>
+            <li><a href="{% url 'templates' %}" class="{% if request.resolver_match.url_name == 'templates' %}active{% endif %}">📝 Plantillas</a></li>
+            <li><a href="{% url 'funnels' %}" class="{% if request.resolver_match.url_name == 'funnels' %}active{% endif %}">🔄 Ventas</a></li>
+            
+            <!-- Solo para soporte (no admin) -->
+            {% elif user.role == 'support' %}
+            <li><a href="{% url 'templates' %}" class="{% if request.resolver_match.url_name == 'templates' %}active{% endif %}">📝 Plantillas</a></li>
+            <li><a href="{% url 'funnels' %}" class="{% if request.resolver_match.url_name == 'funnels' %}active{% endif %}">🔄 Soporte</a></li>
+            {% endif %}
+        </ul>
+        <div class="navbar-user">
+            <span class="user-name">👤 {{ user.username }}</span>
+            <a href="{% url 'logout' %}" class="btn-logout">Salir</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="main-content">
+        {% comment %}
+        {% if messages %}
+        <div class="messages-container">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endcomment %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{% static 'js/main.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

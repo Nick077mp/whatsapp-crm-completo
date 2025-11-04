@@ -1,0 +1,438 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Plataforma de Mensajería{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="page-header">
+        <h2>Dashboard</h2>
+        <p>Resumen de actividades y métricas</p>
+    </div>
+
+    <!-- Métricas principales -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-icon">💬</div>
+            <div class="metric-content">
+                <h3>{{ total_conversations }}</h3>
+                <p>Conversaciones Activas</p>
+            </div>
+        </div>
+
+        <div class="metric-card alert">
+            <div class="metric-icon">⚠️</div>
+            <div class="metric-content">
+                <h3>{{ unanswered_conversations }}</h3>
+                <p>Sin Respuesta</p>
+            </div>
+        </div>
+
+        <div class="metric-card success">
+            <div class="metric-icon">⚡</div>
+            <div class="metric-content">
+                <h3>{{ min_response_time }}s</h3>
+                <p>Tiempo Mínimo de Respuesta</p>
+            </div>
+        </div>
+
+        <div class="metric-card info">
+            <div class="metric-icon">⏱️</div>
+            <div class="metric-content">
+                <h3>{{ max_response_time }}s</h3>
+                <p>Tiempo Máximo de Respuesta</p>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon">📊</div>
+            <div class="metric-content">
+                <h3>{{ avg_response_time }}s</h3>
+                <p>Tiempo Promedio de Respuesta</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recordatorios pendientes -->
+    {% if pending_reminders %}
+    <div class="section-card">
+        <div class="section-header">
+            <h3>🔔 Recordatorios Pendientes</h3>
+        </div>
+        <div class="reminders-list">
+            {% for reminder in pending_reminders %}
+            <div class="reminder-item">
+                <div class="reminder-info">
+                    <strong>{{ reminder.title }}</strong>
+                    <p>{{ reminder.description|truncatewords:15 }}</p>
+                    <small>Lead: {{ reminder.lead.contact.display_name }}</small>
+                </div>
+                <div class="reminder-date">
+                    <span>{{ reminder.reminder_date|date:"d/m/Y H:i" }}</span>
+                    <button class="btn btn-sm btn-success" onclick="completeReminder({{ reminder.id }})">
+                        ✓ Completar
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if user.is_staff %}
+    <!-- Vista Admin: Todas las conversaciones -->
+    <div class="section-card">
+        <div class="section-header">
+            <h3>💬 Conversaciones Recientes</h3>
+            <a href="{% url 'chat' %}" class="btn btn-sm btn-primary">Ver Todas</a>
+        </div>
+        <div class="conversations-table-container">
+            <table class="conversations-table">
+                <thead>
+                    <tr>
+                        <th>Contacto</th>
+                        <th>Plataforma</th>
+                        <th>Estado</th>
+                        <th>Asignado a</th>
+                        <th>Último Mensaje</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conv in recent_conversations %}
+                    <tr>
+                        <td>
+                            <div class="contact-details">
+                                <strong>{{ conv.contact.display_name }}</strong>
+                                {% if conv.contact.phone %}
+                                <small>{{ conv.contact.phone }}</small>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="platform-badge badge-{{ conv.contact.platform.name }}">
+                                {{ conv.contact.platform.name|title }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="status-badge status-{{ conv.status }}">
+                                {{ conv.get_status_display }}
+                            </span>
+                            {% if conv.needs_response %}
+                            <span class="urgency-badge">⚠️</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if conv.assigned_to %}
+                            <span class="assigned-user">{{ conv.assigned_to.username }}</span>
+                            {% else %}
+                            <em class="text-muted">No asignado</em>
+                            {% endif %}
+                        </td>
+                        <td class="timestamp">
+                            {% if conv.last_message_at %}
+                            {{ conv.last_message_at|date:"d/m H:i" }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{% url 'conversation_detail' conv.id %}" class="btn btn-sm btn-primary">
+                                Abrir
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">No hay conversaciones recientes</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <!-- Vista Agente: Conversaciones segregadas -->
+    <div class="conversations-grid">
+        <!-- Conversaciones asignadas al usuario -->
+        <div class="section-card">
+            <div class="section-header">
+                <h3>👤 Mis Conversaciones Asignadas</h3>
+                <div class="section-stats">
+                    <span class="badge badge-primary">{{ assigned_conversations|length }}</span>
+                </div>
+            </div>
+            <div class="conversations-table-container">
+                <table class="conversations-table compact">
+                    <thead>
+                        <tr>
+                            <th>Contacto</th>
+                            <th>Plataforma</th>
+                            <th>Estado</th>
+                            <th>Última Actividad</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for conv in assigned_conversations %}
+                        <tr>
+                            <td>
+                                <div class="contact-details">
+                                    <strong>{{ conv.contact.display_name }}</strong>
+                                    {% if conv.contact.phone %}
+                                    <small>{{ conv.contact.phone }}</small>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="platform-badge badge-{{ conv.contact.platform.name }}">
+                                    {{ conv.contact.platform.name|title }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if conv.needs_response %}
+                                <span class="status-badge status-urgent">⚠️ Responder</span>
+                                {% else %}
+                                <span class="status-badge status-{{ conv.status }}">{{ conv.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="timestamp">
+                                {% if conv.last_message_at %}
+                                {{ conv.last_message_at|date:"d/m H:i" }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'conversation_detail' conv.id %}" class="btn btn-sm btn-primary">
+                                    Abrir
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No tienes conversaciones asignadas</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conversaciones disponibles para asignar -->
+        <div class="section-card">
+            <div class="section-header">
+                <h3>🔄 Conversaciones Disponibles</h3>
+                <div class="section-stats">
+                    <span class="badge badge-info">{{ available_count|default:0 }} disponibles</span>
+                    <button class="btn btn-sm btn-secondary" onclick="refreshAvailable()">🔄 Actualizar</button>
+                </div>
+            </div>
+            <div class="conversations-table-container">
+                <table class="conversations-table compact">
+                    <thead>
+                        <tr>
+                            <th>Contacto</th>
+                            <th>Plataforma</th>
+                            <th>Estado</th>
+                            <th>Última Actividad</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for conv in unassigned_conversations %}
+                        <tr>
+                            <td>
+                                <div class="contact-details">
+                                    <strong>{{ conv.contact.display_name }}</strong>
+                                    {% if conv.contact.phone %}
+                                    <small>{{ conv.contact.phone }}</small>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="platform-badge badge-{{ conv.contact.platform.name }}">
+                                    {{ conv.contact.platform.name|title }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if conv.needs_response %}
+                                <span class="status-badge status-urgent">⚠️ Sin Responder</span>
+                                {% else %}
+                                <span class="status-badge status-{{ conv.status }}">{{ conv.get_status_display }}</span>
+                                {% endif %}
+                                {% if conv.assigned_to %}
+                                <small class="text-muted">Asignado a: {{ conv.assigned_to.username }}</small>
+                                {% endif %}
+                            </td>
+                            <td class="timestamp">
+                                {% if conv.last_message_at %}
+                                {{ conv.last_message_at|date:"d/m H:i" }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="{% url 'conversation_detail' conv.id %}" class="btn btn-sm btn-outline">
+                                        �️ Ver
+                                    </a>
+                                    {% if not conv.assigned_to %}
+                                    <button class="btn btn-sm btn-success" onclick="assignConversation({{ conv.id }})">
+                                        📋 Asignarme
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No hay conversaciones disponibles</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function completeReminder(reminderId) {
+    if (!confirm('¿Marcar este recordatorio como completado?')) return;
+    
+    fetch(`/api/reminders/${reminderId}/complete/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error al completar recordatorio');
+        console.error(error);
+    });
+}
+
+function assignConversation(conversationId) {
+    if (!confirm('¿Deseas asignarte esta conversación?')) return;
+    
+    // Mostrar indicador de carga
+    const button = event.target;
+    const originalContent = button.innerHTML;
+    button.innerHTML = '⏳ Asignando...';
+    button.disabled = true;
+    
+    fetch(`/api/conversations/${conversationId}/assign/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            'assign_to_current_user': true
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Mostrar mensaje de éxito
+            button.innerHTML = '✅ Asignado';
+            button.classList.remove('btn-success');
+            button.classList.add('btn-primary');
+            
+            // Recargar después de un breve delay
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            alert('Error: ' + (data.error || 'No se pudo asignar la conversación'));
+            button.innerHTML = originalContent;
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        alert('Error al asignar conversación');
+        console.error(error);
+        button.innerHTML = originalContent;
+        button.disabled = false;
+    });
+}
+
+function refreshAvailable() {
+    const button = event.target;
+    const originalContent = button.innerHTML;
+    
+    // Mostrar indicador de actualización
+    button.innerHTML = '🔄 Actualizando...';
+    button.disabled = true;
+    
+    // Recargar después de un breve delay
+    setTimeout(() => {
+        location.reload();
+    }, 500);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Auto-actualización cada 30 segundos para usuarios no-admin
+document.addEventListener('DOMContentLoaded', function() {
+    {% if not user.is_staff %}
+    setInterval(() => {
+        // Actualización silenciosa de contadores
+        fetch('/api/conversations/count/', {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateConversationCounts(data);
+            }
+        })
+        .catch(error => console.log('Error en auto-actualización:', error));
+    }, 30000); // 30 segundos
+    {% endif %}
+});
+
+function updateConversationCounts(data) {
+    // Actualizar badges de contadores
+    const assignedBadge = document.querySelector('.section-stats .badge-primary');
+    const availableBadge = document.querySelector('.section-stats .badge-info');
+    
+    if (assignedBadge && data.assigned_count !== undefined) {
+        assignedBadge.textContent = data.assigned_count;
+    }
+    
+    if (availableBadge && data.available_count !== undefined) {
+        availableBadge.textContent = data.available_count + ' disponibles';
+    }
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,375 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard de Recuperación - Plataforma de Mensajería{% endblock %}
+{% block content %}
+<div class="recovery-dashboard-container">
+    <div class="page-header">
+        <h2>🔄 Dashboard de Recuperación</h2>
+        <div class="header-actions">
+            <a href="{% url 'funnels' %}?type=recovery" class="btn btn-primary">Ver Embudo de Recuperación</a>
+        </div>
+    </div>
+
+    <!-- Métricas principales -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-icon">📊</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ total_recovery_cases }}</div>
+                <div class="metric-label">Total de Casos</div>
+            </div>
+        </div>
+        
+        <div class="metric-card active">
+            <div class="metric-icon">🔄</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ active_cases }}</div>
+                <div class="metric-label">Casos Activos</div>
+            </div>
+        </div>
+        
+        <div class="metric-card success">
+            <div class="metric-icon">✅</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ recovered_cases }}</div>
+                <div class="metric-label">Recuperados</div>
+            </div>
+        </div>
+        
+        <div class="metric-card danger">
+            <div class="metric-icon">❌</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ lost_cases }}</div>
+                <div class="metric-label">Perdidos</div>
+            </div>
+        </div>
+        
+        <div class="metric-card rate">
+            <div class="metric-icon">📈</div>
+            <div class="metric-content">
+                <div class="metric-value">{{ recovery_rate }}%</div>
+                <div class="metric-label">Tasa de Recuperación</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Casos próximos a vencer -->
+        <div class="dashboard-section">
+            <h3>⏰ Casos Próximos a Vencer (7 días)</h3>
+            {% if upcoming_cases %}
+                <div class="cases-list">
+                    {% for case in upcoming_cases %}
+                    <div class="case-item upcoming">
+                        <div class="case-header">
+                            <strong>{{ case.contact.display_name }}</strong>
+                            <span class="case-date">{{ case.target_recovery_date|date:"d/m/Y" }}</span>
+                        </div>
+                        <div class="case-details">
+                            <p><strong>Razón:</strong> {{ case.get_reason_display }}</p>
+                            <p><strong>Asignado a:</strong> {{ case.assigned_to.username|default:"Sin asignar" }}</p>
+                            <p class="case-notes">{{ case.reason_notes|truncatechars:100 }}</p>
+                        </div>
+                        <div class="case-actions">
+                            <a href="{% url 'conversation_detail' case.conversation.id %}" class="btn btn-small btn-primary">Ver Conversación</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-state">No hay casos próximos a vencer</p>
+            {% endif %}
+        </div>
+
+        <!-- Casos vencidos -->
+        <div class="dashboard-section">
+            <h3>🚨 Casos Vencidos</h3>
+            {% if overdue_cases %}
+                <div class="cases-list">
+                    {% for case in overdue_cases %}
+                    <div class="case-item overdue">
+                        <div class="case-header">
+                            <strong>{{ case.contact.display_name }}</strong>
+                            <span class="case-date overdue">{{ case.target_recovery_date|date:"d/m/Y" }}</span>
+                        </div>
+                        <div class="case-details">
+                            <p><strong>Razón:</strong> {{ case.get_reason_display }}</p>
+                            <p><strong>Asignado a:</strong> {{ case.assigned_to.username|default:"Sin asignar" }}</p>
+                            <p class="case-notes">{{ case.reason_notes|truncatechars:100 }}</p>
+                        </div>
+                        <div class="case-actions">
+                            <a href="{% url 'conversation_detail' case.conversation.id %}" class="btn btn-small btn-warning">Atender Urgente</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-state">No hay casos vencidos</p>
+            {% endif %}
+        </div>
+
+        <!-- Casos por razón -->
+        <div class="dashboard-section">
+            <h3>📊 Distribución por Razón</h3>
+            {% if cases_by_reason %}
+                <div class="reason-stats">
+                    {% for reason_data in cases_by_reason %}
+                    <div class="reason-item">
+                        <div class="reason-bar">
+                            <div class="reason-label">
+                                {% if reason_data.reason == 'price_objection' %}Objeción de Precio
+                                {% elif reason_data.reason == 'competitor' %}Competencia
+                                {% elif reason_data.reason == 'timing' %}Mal Momento
+                                {% elif reason_data.reason == 'feature_missing' %}Falta de Funcionalidad
+                                {% elif reason_data.reason == 'service_issue' %}Problema de Servicio
+                                {% elif reason_data.reason == 'communication' %}Falla de Comunicación
+                                {% else %}Otro
+                                {% endif %}
+                            </div>
+                            <div class="reason-count">{{ reason_data.count }}</div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {% widthratio reason_data.count total_recovery_cases 100 %}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-state">No hay datos de razones</p>
+            {% endif %}
+        </div>
+
+        <!-- Casos por agente -->
+        <div class="dashboard-section">
+            <h3>👥 Casos Activos por Agente</h3>
+            {% if cases_by_agent %}
+                <div class="agent-stats">
+                    {% for agent_data in cases_by_agent %}
+                    <div class="agent-item">
+                        <div class="agent-info">
+                            <span class="agent-name">{{ agent_data.assigned_to__username|default:"Sin asignar" }}</span>
+                            <span class="agent-count">{{ agent_data.count }} casos</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {% widthratio agent_data.count active_cases 100 %}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-state">No hay casos asignados</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.recovery-dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #eee;
+}
+
+.header-actions {
+    display: flex;
+    gap: 15px;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.metric-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: transform 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+}
+
+.metric-card.active {
+    border-left: 4px solid #007bff;
+}
+
+.metric-card.success {
+    border-left: 4px solid #28a745;
+}
+
+.metric-card.danger {
+    border-left: 4px solid #dc3545;
+}
+
+.metric-card.rate {
+    border-left: 4px solid #6f42c1;
+}
+
+.metric-icon {
+    font-size: 32px;
+}
+
+.metric-value {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.metric-label {
+    font-size: 14px;
+    color: #666;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 25px;
+}
+
+.dashboard-section {
+    background: white;
+    border-radius: 8px;
+    padding: 25px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.dashboard-section h3 {
+    margin-bottom: 20px;
+    color: #333;
+    border-bottom: 2px solid #f8f9fa;
+    padding-bottom: 10px;
+}
+
+.cases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.case-item {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 15px;
+    transition: box-shadow 0.2s ease;
+}
+
+.case-item:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.case-item.upcoming {
+    border-left: 4px solid #ffc107;
+}
+
+.case-item.overdue {
+    border-left: 4px solid #dc3545;
+    background-color: #fff5f5;
+}
+
+.case-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.case-date {
+    font-size: 12px;
+    background: #e9ecef;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.case-date.overdue {
+    background: #dc3545;
+    color: white;
+}
+
+.case-details p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.case-notes {
+    color: #666;
+    font-style: italic;
+}
+
+.case-actions {
+    margin-top: 15px;
+    text-align: right;
+}
+
+.reason-stats, .agent-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.reason-item, .agent-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reason-bar, .agent-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.reason-label, .agent-name {
+    font-weight: 500;
+}
+
+.reason-count, .agent-count {
+    font-size: 14px;
+    background: #e9ecef;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    transition: width 0.3s ease;
+}
+
+.empty-state {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 40px 20px;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+</style>
+{% endblock %}

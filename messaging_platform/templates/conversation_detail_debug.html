@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}DEBUG - Chat con {{ conversation.contact.display_name }}{% endblock %}
+{% block content %}
+
+<div style="background: red; color: white; padding: 20px; margin: 20px;">
+    <h1>DEBUG: Template de conversación funcionando</h1>
+    <h2>Conversación ID: {{ conversation.id }}</h2>
+    <h3>Contacto: {{ conversation.contact.display_name }}</h3>
+    <h4>Plataforma: {{ conversation.contact.platform.name }}</h4>
+    <p>Total de mensajes: {{ messages|length }}</p>
+    
+    <hr>
+    
+    {% if messages %}
+        {% for message in messages %}
+        <div style="border: 1px solid white; margin: 10px; padding: 10px;">
+            <strong>{{ message.sender_name }}</strong> - {{ message.created_at|date:"d/m/Y H:i" }}
+            <br>
+            {{ message.content }}
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No hay mensajes en esta conversación</p>
+    {% endif %}
+</div>
+
+{% endblock %}

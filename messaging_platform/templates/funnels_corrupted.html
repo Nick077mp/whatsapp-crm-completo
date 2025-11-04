@@ -1,0 +1,1255 @@
+{% extends 'base.html' %}{% extends 'base.html' %}
+
+{% block title %}Embudos - Plataforma de Mensajería{% endblock %}{% block title %}Embudos - Plataforma de Mensajería{% endblock %}
+
+{% block content %}{% block content %}
+
+{% csrf_token %}{% csrf_token %}
+
+<div class="funnels-container"><div class="funnels-container">
+
+    <div class="page-header">    <div class="page-header">
+
+        <h2>Embudos de {{ funnel_type|title }}</h2>        <h2>Embudos de {{ funnel_type|title }}</h2>
+
+        <div>        <div>
+
+            <a href="?type=sales" class="btn {% if funnel_type == 'sales' %}btn-primary{% else %}btn-outline{% endif %}">            <a href="?type=sales" class="btn {% if funnel_type == 'sales' %}btn-primary{% else %}btn-outline{% endif %}">
+
+                📈 Ventas                📈 Ventas
+
+            </a>            </a>
+
+            <a href="?type=support" class="btn {% if funnel_type == 'support' %}btn-primary{% else %}btn-outline{% endif %}">            <a href="?type=support" class="btn {% if funnel_type == 'support' %}btn-primary{% else %}btn-outline{% endif %}">
+
+                🛠️ Soporte                🛠️ Soporte
+
+            </a>            </a>
+
+        </div>        </div>
+
+    </div>    </div>
+
+
+
+    <!-- Nota informativa -->    <!-- Nota informativa -->
+
+    <div class="info-banner">    <div class="info-banner">
+
+        <div class="info-content">        <div class="info-content">
+
+            <span class="info-icon">💡</span>            <span class="info-icon">💡</span>
+
+            <div class="info-text">            <div class="info-text">
+
+                <strong>¿Buscas conversaciones nuevas para clasificar?</strong>                <strong>¿Buscas conversaciones nuevas para clasificar?</strong>
+
+                <p>Las conversaciones pendientes de clasificación están ahora en la <a href="{% url 'inbox' %}">Bandeja de Entrada</a></p>                <p>Las conversaciones pendientes de clasificación están ahora en la <a href="{% url 'inbox' %}">Bandeja de Entrada</a></p>
+
+            </div>            </div>
+
+            <a href="{% url 'inbox' %}" class="btn-inbox">            <a href="{% url 'inbox' %}" class="btn-inbox">
+
+                📥 Ir a Bandeja de Entrada                📥 Ir a Bandeja de Entrada
+
+            </a>            </a>
+
+        </div>        </div>
+
+    </div>    </div>
+
+
+
+    <!-- Etapas del embudo -->    <!-- Etapas del embudo -->
+
+    <div class="funnel-stages-header">    <div class="funnel-stages-header">
+
+        <h2>🎯 EMBUDO DE {{ funnel_type|title|upper }}</h2>        <h2>🎯 EMBUDO DE {{ funnel_type|title|upper }}</h2>
+
+        <p>Conversaciones organizadas por etapa del proceso de {{ funnel_type }}</p>        <p>Conversaciones organizadas por etapa del proceso de {{ funnel_type }}</p>
+
+    </div>    </div>
+
+        
+
+    <div class="funnel-stages" id="funnel-stages">    <div class="funnel-stages" id="funnel-stages">
+
+        {% for stage in funnel_data %}        {% for stage in funnel_data %}
+
+        <div class="funnel-stage drop-zone" data-stage="{{ stage.stage_code }}">        <div class="funnel-stage drop-zone" data-stage="{{ stage.stage_code }}">
+
+            <div class="stage-header">            <div class="stage-header">
+
+                <div class="stage-number">{{ forloop.counter }}</div>                <div class="stage-number">{{ forloop.counter }}</div>
+
+                <div class="stage-info">                <div class="stage-info">
+
+                    <h3>{{ stage.stage_name }}</h3>                    <h3>{{ stage.stage_name }}</h3>
+
+                    <small class="stage-description">                    <small class="stage-description">
+
+                        {% if stage.stage_code == funnel_type|add:'_initial' %}                        {% if stage.stage_code == funnel_type|add:'_initial' %}
+
+                        Conversaciones que acaban de ingresar al embudo                        Conversaciones que acaban de ingresar al embudo
+
+                        {% elif stage.stage_code == funnel_type|add:'_negotiation' %}                        {% elif stage.stage_code == funnel_type|add:'_negotiation' %}
+
+                        En proceso de negociación activa                        En proceso de negociación activa
+
+                        {% elif stage.stage_code == funnel_type|add:'_debate' %}                        {% elif stage.stage_code == funnel_type|add:'_debate' %}
+
+                        Resolviendo dudas y objeciones                        Resolviendo dudas y objeciones
+
+                        {% elif stage.stage_code == funnel_type|add:'_closing' %}                        {% elif stage.stage_code == funnel_type|add:'_closing' %}
+
+                        Finalizando el proceso                        Finalizando el proceso
+
+                        {% elif stage.stage_code == funnel_type|add:'_process' %}                        {% elif stage.stage_code == funnel_type|add:'_process' %}
+
+                        Procesando solicitud de soporte                        Procesando solicitud de soporte
+
+                        {% else %}                        {% else %}
+
+                        Etapa del proceso de {{ funnel_type }}                        Etapa del proceso de {{ funnel_type }}
+
+                        {% endif %}                        {% endif %}
+
+                    </small>                    </small>
+
+                </div>                </div>
+
+                <span class="badge count-badge" id="count-{{ stage.stage_code }}">{{ stage.count }}</span>                <span class="badge count-badge" id="count-{{ stage.stage_code }}">{{ stage.count }}</span>
+
+            </div>            </div>
+
+            <div class="stage-conversations" id="stage-{{ stage.stage_code }}">            <div class="stage-conversations" id="stage-{{ stage.stage_code }}">
+
+                {% for conv in stage.conversations %}                {% for conv in stage.conversations %}
+
+                <div class="conversation-card draggable"                 <div class="conversation-card draggable" 
+
+                     data-conversation-id="{{ conv.id }}"                      data-conversation-id="{{ conv.id }}" 
+
+                     data-current-stage="{{ stage.stage_code }}"                     data-current-stage="{{ stage.stage_code }}"
+
+                     draggable="true">                     draggable="true">
+
+                    <div class="card-header">                    <div class="card-header">
+
+                        <strong>{{ conv.contact.name|default:conv.contact.phone }}</strong>                        <strong>{{ conv.contact.name|default:conv.contact.phone }}</strong>
+
+                        <small class="badge badge-{{ conv.contact.platform.name }}">{{ conv.contact.platform.name }}</small>                        <small class="badge badge-{{ conv.contact.platform.name }}">{{ conv.contact.platform.name }}</small>
+
+                    </div>                    </div>
+
+                    <div class="card-content">                    <div class="card-content">
+
+                        <p class="last-message">{{ conv.last_message_preview|default:"Sin mensajes" }}</p>                        <p class="last-message">{{ conv.last_message_preview|default:"Sin mensajes" }}</p>
+
+                        <small class="text-muted">{{ conv.last_message_at|date:"d/m H:i" }}</small>                        <small class="text-muted">{{ conv.last_message_at|date:"d/m H:i" }}</small>
+
+                        {% if conv.assigned_to %}                        {% if conv.assigned_to %}
+
+                        <small class="assigned-to">👤 {{ conv.assigned_to.username }}</small>                        <small class="assigned-to">👤 {{ conv.assigned_to.username }}</small>
+
+                        {% endif %}                        {% endif %}
+
+                    </div>                    </div>
+
+                    <div class="card-actions">                    <div class="card-actions">
+
+                        <button class="btn-small btn-outline" onclick="viewConversation({{ conv.id }})">                        <button class="btn-small btn-outline" onclick="viewConversation({{ conv.id }})">
+
+                            💬 Abrir Chat                            💬 Abrir Chat
+
+                        </button>                        </button>
+
+                        <div class="move-buttons">                        <div class="move-buttons">
+
+                            {% if not forloop.first %}                            {% if not forloop.first %}
+
+                            <button class="btn-small btn-secondary" onclick="moveConversation({{ conv.id }}, '{{ stage.prev_stage }}')">                            <button class="btn-small btn-secondary" onclick="moveConversation({{ conv.id }}, '{{ stage.prev_stage }}')">
+
+                                ⬅️                                ⬅️
+
+                            </button>                            </button>
+
+                            {% endif %}                            {% endif %}
+
+                            {% if not forloop.last %}                            {% if not forloop.last %}
+
+                            <button class="btn-small btn-success" onclick="moveConversation({{ conv.id }}, '{{ stage.next_stage }}')">                            <button class="btn-small btn-success" onclick="moveConversation({{ conv.id }}, '{{ stage.next_stage }}')">
+
+                                ➡️                                ➡️
+
+                            </button>                            </button>
+
+                            {% endif %}                            {% endif %}
+
+                        </div>                        </div>
+
+                    </div>                    </div>
+
+                </div>                </div>
+
+                {% empty %}                {% empty %}
+
+                <div class="empty-stage">                <div class="empty-stage">
+
+                    <p class="text-center text-muted">                    <p class="text-center text-muted">
+
+                        {% if stage.stage_code == funnel_type|add:'_initial' %}                        {% if stage.stage_code == funnel_type|add:'_initial' %}
+
+                        Arrastra conversaciones aquí para comenzar el embudo                        Arrastra conversaciones aquí para comenzar el embudo
+
+                        {% else %}                        {% else %}
+
+                        Sin conversaciones en esta etapa                        Sin conversaciones en esta etapa
+
+                        {% endif %}                        {% endif %}
+
+                    </p>                    </p>
+
+                </div>                </div>
+
+                {% endfor %}                {% endfor %}
+
+            </div>            </div>
+
+        </div>        </div>
+
+        {% endfor %}        {% endfor %}
+
+    </div>    </div>
+
+</div></div>
+
+
+
+<!-- Modal para confirmación --><!-- Modal para confirmación -->
+
+<div id="confirmModal" class="modal" style="display: none;"><div id="confirmModal" class="modal" style="display: none;">
+
+    <div class="modal-content">    <div class="modal-content">
+
+        <h4>Confirmar movimiento</h4>        <h4>Confirmar movimiento</h4>
+
+        <p id="confirmMessage"></p>        <p id="confirmMessage"></p>
+
+        <div class="modal-actions">        <div class="modal-actions">
+
+            <button class="btn btn-primary" id="confirmYes">Sí, mover</button>            <button class="btn btn-primary" id="confirmYes">Sí, mover</button>
+
+            <button class="btn btn-secondary" id="confirmNo">Cancelar</button>            <button class="btn btn-secondary" id="confirmNo">Cancelar</button>
+
+        </div>        </div>
+
+    </div>    </div>
+
+</div></div>
+
+{% endblock %}{% endblock %}
+
+
+
+{% block extra_css %}{% block extra_css %}
+
+<style><style>
+
+/* Banner informativo *//* Banner informativo */
+
+.info-banner {.info-banner {
+
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+
+    border: 2px solid #2196f3;    border: 2px solid #2196f3;
+
+    border-radius: 12px;    border-radius: 12px;
+
+    padding: 1.5rem;    padding: 1.5rem;
+
+    margin-bottom: 2rem;    margin-bottom: 2rem;
+
+    box-shadow: 0 2px 10px rgba(33, 150, 243, 0.15);    box-shadow: 0 2px 10px rgba(33, 150, 243, 0.15);
+
+}}
+
+
+
+.info-content {.info-content {
+
+    display: flex;    display: flex;
+
+    align-items: center;    align-items: center;
+
+    gap: 1rem;    gap: 1rem;
+
+    flex-wrap: wrap;    flex-wrap: wrap;
+
+}}
+
+
+
+.info-icon {.info-icon {
+
+    font-size: 2rem;    font-size: 2rem;
+
+    color: #1976d2;    color: #1976d2;
+
+}}
+
+
+
+.info-text {.info-text {
+
+    flex: 1;    flex: 1;
+
+    min-width: 250px;    min-width: 250px;
+
+}}
+
+
+
+.info-text strong {.info-text strong {
+
+    color: #1565c0;    color: #1565c0;
+
+    font-size: 1.1rem;    font-size: 1.1rem;
+
+    display: block;    display: block;
+
+    margin-bottom: 0.3rem;    margin-bottom: 0.3rem;
+
+}}
+
+
+
+.info-text p {.info-text p {
+
+    color: #424242;    color: #424242;
+
+    margin: 0;    margin: 0;
+
+}}
+
+
+
+.info-text a {.info-text a {
+
+    color: #1976d2;    color: #1976d2;
+
+    text-decoration: none;    text-decoration: none;
+
+    font-weight: 500;    font-weight: 500;
+
+}}
+
+
+
+.info-text a:hover {.info-text a:hover {
+
+    text-decoration: underline;    text-decoration: underline;
+
+}}
+
+
+
+.btn-inbox {.btn-inbox {
+
+    background: linear-gradient(135deg, #1976d2, #2196f3);    background: linear-gradient(135deg, #1976d2, #2196f3);
+
+    color: white;    color: white;
+
+    padding: 0.8rem 1.5rem;    padding: 0.8rem 1.5rem;
+
+    border-radius: 8px;    border-radius: 8px;
+
+    text-decoration: none;    text-decoration: none;
+
+    font-weight: bold;    font-weight: bold;
+
+    transition: all 0.3s ease;    transition: all 0.3s ease;
+
+    display: flex;    display: flex;
+
+    align-items: center;    align-items: center;
+
+    gap: 0.5rem;    gap: 0.5rem;
+
+    white-space: nowrap;    white-space: nowrap;
+
+}}
+
+
+
+.btn-inbox:hover {.btn-inbox:hover {
+
+    background: linear-gradient(135deg, #1565c0, #1976d2);    background: linear-gradient(135deg, #1565c0, #1976d2);
+
+    transform: translateY(-1px);    transform: translateY(-1px);
+
+    box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3);    box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3);
+
+}}
+
+
+
+/* Header de etapas del embudo *//* Header de etapas del embudo */
+
+.funnel-stages-header {.funnel-stages-header {
+
+    text-align: center;    text-align: center;
+
+    margin-bottom: 2rem;    margin-bottom: 2rem;
+
+    padding: 1.5rem;    padding: 1.5rem;
+
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+    color: white;    color: white;
+
+    border-radius: 12px;    border-radius: 12px;
+
+}}
+
+
+
+.funnel-stages-header h2 {.funnel-stages-header h2 {
+
+    margin: 0 0 0.5rem 0;    margin: 0 0 0.5rem 0;
+
+    font-weight: bold;    font-weight: bold;
+
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+
+}}
+
+
+
+.funnel-stages-header p {.funnel-stages-header p {
+
+    margin: 0;    margin: 0;
+
+    opacity: 0.9;    opacity: 0.9;
+
+    font-size: 1.1rem;    font-size: 1.1rem;
+
+}}
+
+
+
+/* Etapas del embudo *//* Etapas del embudo */
+
+.funnel-stages {.funnel-stages {
+
+    display: grid;    display: grid;
+
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+
+    gap: 1.5rem;    gap: 1.5rem;
+
+}}
+
+
+
+.funnel-stage {.funnel-stage {
+
+    background: white;    background: white;
+
+    border-radius: 8px;    border-radius: 8px;
+
+    padding: 1rem;    padding: 1rem;
+
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+
+    min-height: 400px;    min-height: 400px;
+
+    transition: all 0.3s ease;    transition: all 0.3s ease;
+
+}}
+
+
+
+.funnel-stage.drag-over {.funnel-stage.drag-over {
+
+    background: #f0f8ff;    background: #f0f8ff;
+
+    border: 2px dashed #007bff;    border: 2px dashed #007bff;
+
+    transform: scale(1.02);    transform: scale(1.02);
+
+}}
+
+
+
+.stage-header {.stage-header {
+
+    display: flex;    display: flex;
+
+    align-items: center;    align-items: center;
+
+    margin-bottom: 1rem;    margin-bottom: 1rem;
+
+    padding-bottom: 0.5rem;    padding-bottom: 0.5rem;
+
+    border-bottom: 2px solid #f1f3f4;    border-bottom: 2px solid #f1f3f4;
+
+}}
+
+
+
+.stage-number {.stage-number {
+
+    background: linear-gradient(135deg, #007bff, #0056b3);    background: linear-gradient(135deg, #007bff, #0056b3);
+
+    color: white;    color: white;
+
+    width: 30px;    width: 30px;
+
+    height: 30px;    height: 30px;
+
+    border-radius: 50%;    border-radius: 50%;
+
+    display: flex;    display: flex;
+
+    align-items: center;    align-items: center;
+
+    justify-content: center;    justify-content: center;
+
+    font-weight: bold;    font-weight: bold;
+
+    margin-right: 1rem;    margin-right: 1rem;
+
+    font-size: 0.9rem;    font-size: 0.9rem;
+
+}}
+
+
+
+.stage-info {.stage-info {
+
+    flex: 1;    flex: 1;
+
+}}
+
+
+
+.stage-info h3 {.stage-info h3 {
+
+    margin: 0 0 0.25rem 0;    margin: 0 0 0.25rem 0;
+
+    color: #2c3e50;    color: #2c3e50;
+
+    font-size: 1.1rem;    font-size: 1.1rem;
+
+}}
+
+
+
+.stage-description {.stage-description {
+
+    color: #6c757d;    color: #6c757d;
+
+    font-size: 0.85rem;    font-size: 0.85rem;
+
+    line-height: 1.3;    line-height: 1.3;
+
+}}
+
+
+
+.count-badge {.count-badge {
+
+    background: #e9ecef;    background: #e9ecef;
+
+    color: #495057;    color: #495057;
+
+    padding: 0.25rem 0.75rem;    padding: 0.25rem 0.75rem;
+
+    border-radius: 15px;    border-radius: 15px;
+
+    font-weight: bold;    font-weight: bold;
+
+    font-size: 0.85rem;    font-size: 0.85rem;
+
+}}
+
+
+
+.stage-conversations {.stage-conversations {
+
+    min-height: 300px;    min-height: 300px;
+
+}}
+
+
+
+.conversation-card {.conversation-card {
+
+    background: #f8f9fa;    background: #f8f9fa;
+
+    border: 1px solid #e9ecef;    border: 1px solid #e9ecef;
+
+    border-radius: 8px;    border-radius: 8px;
+
+    padding: 1rem;    padding: 1rem;
+
+    margin-bottom: 0.75rem;    margin-bottom: 0.75rem;
+
+    cursor: move;    cursor: move;
+
+    transition: all 0.3s ease;    transition: all 0.3s ease;
+
+}}
+
+
+
+.conversation-card:hover {.conversation-card:hover {
+
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+
+    transform: translateY(-1px);    transform: translateY(-1px);
+
+}}
+
+
+
+.conversation-card.dragging {.conversation-card.dragging {
+
+    opacity: 0.7;    opacity: 0.7;
+
+    transform: rotate(3deg);    transform: rotate(3deg);
+
+}}
+
+
+
+.card-header {.card-header {
+
+    display: flex;    display: flex;
+
+    justify-content: space-between;    justify-content: space-between;
+
+    align-items: center;    align-items: center;
+
+    margin-bottom: 0.5rem;    margin-bottom: 0.5rem;
+
+}}
+
+
+
+.card-header strong {.card-header strong {
+
+    color: #2c3e50;    color: #2c3e50;
+
+    font-size: 0.95rem;    font-size: 0.95rem;
+
+}}
+
+
+
+.badge {.badge {
+
+    font-size: 0.75rem;    font-size: 0.75rem;
+
+    padding: 0.2rem 0.5rem;    padding: 0.2rem 0.5rem;
+
+    border-radius: 4px;    border-radius: 4px;
+
+    text-transform: uppercase;    text-transform: uppercase;
+
+    font-weight: bold;    font-weight: bold;
+
+}}
+
+
+
+.badge-whatsapp { background: #25d366; color: white; }.badge-whatsapp { background: #25d366; color: white; }
+
+.badge-telegram { background: #0088cc; color: white; }.badge-telegram { background: #0088cc; color: white; }
+
+.badge-email { background: #ea4335; color: white; }.badge-email { background: #ea4335; color: white; }
+
+
+
+.card-content {.card-content {
+
+    margin-bottom: 0.75rem;    margin-bottom: 0.75rem;
+
+}}
+
+
+
+.last-message {.last-message {
+
+    color: #495057;    color: #495057;
+
+    font-size: 0.9rem;    font-size: 0.9rem;
+
+    margin-bottom: 0.25rem;    margin-bottom: 0.25rem;
+
+    line-height: 1.3;    line-height: 1.3;
+
+    display: -webkit-box;    display: -webkit-box;
+
+    -webkit-line-clamp: 2;    -webkit-line-clamp: 2;
+
+    -webkit-box-orient: vertical;    -webkit-box-orient: vertical;
+
+    overflow: hidden;    overflow: hidden;
+
+}}
+
+
+
+.text-muted {.text-muted {
+
+    color: #6c757d;    color: #6c757d;
+
+    font-size: 0.8rem;    font-size: 0.8rem;
+
+}}
+
+
+
+.assigned-to {.assigned-to {
+
+    color: #28a745;    color: #28a745;
+
+    font-size: 0.8rem;    font-size: 0.8rem;
+
+    font-weight: 500;    font-weight: 500;
+
+}}
+
+
+
+.card-actions {.card-actions {
+
+    display: flex;    display: flex;
+
+    justify-content: space-between;    justify-content: space-between;
+
+    align-items: center;    align-items: center;
+
+    gap: 0.5rem;    gap: 0.5rem;
+
+}}
+
+
+
+.btn-small {.btn-small {
+
+    font-size: 0.8rem;    font-size: 0.8rem;
+
+    padding: 0.4rem 0.8rem;    padding: 0.4rem 0.8rem;
+
+    border: none;    border: none;
+
+    border-radius: 4px;    border-radius: 4px;
+
+    cursor: pointer;    cursor: pointer;
+
+    transition: all 0.3s ease;    transition: all 0.3s ease;
+
+    text-decoration: none;    text-decoration: none;
+
+    display: inline-flex;    display: inline-flex;
+
+    align-items: center;    align-items: center;
+
+    gap: 0.3rem;    gap: 0.3rem;
+
+}}
+
+
+
+.btn-outline {.btn-outline {
+
+    background: white;    background: white;
+
+    color: #007bff;    color: #007bff;
+
+    border: 1px solid #007bff;    border: 1px solid #007bff;
+
+}}
+
+
+
+.btn-outline:hover {.btn-outline:hover {
+
+    background: #007bff;    background: #007bff;
+
+    color: white;    color: white;
+
+}}
+
+
+
+.btn-secondary {.btn-secondary {
+
+    background: #6c757d;    background: #6c757d;
+
+    color: white;    color: white;
+
+}}
+
+
+
+.btn-secondary:hover {.btn-secondary:hover {
+
+    background: #5a6268;    background: #5a6268;
+
+}}
+
+
+
+.btn-success {.btn-success {
+
+    background: #28a745;    background: #28a745;
+
+    color: white;    color: white;
+
+}}
+
+
+
+.btn-success:hover {.btn-success:hover {
+
+    background: #218838;    background: #218838;
+
+}}
+
+
+
+.move-buttons {.move-buttons {
+
+    display: flex;    display: flex;
+
+    gap: 0.25rem;    gap: 0.25rem;
+
+}}
+
+
+
+.empty-stage {.empty-stage {
+
+    text-align: center;    text-align: center;
+
+    padding: 2rem 1rem;    padding: 2rem 1rem;
+
+    color: #6c757d;    color: #6c757d;
+
+    font-style: italic;    font-style: italic;
+
+}}
+
+
+
+.text-center {.text-center {
+
+    text-align: center;    text-align: center;
+
+}}
+
+
+
+/* Modal *//* Modal */
+
+.modal {.modal {
+
+    position: fixed;    position: fixed;
+
+    top: 0;    top: 0;
+
+    left: 0;    left: 0;
+
+    width: 100%;    width: 100%;
+
+    height: 100%;    height: 100%;
+
+    background: rgba(0,0,0,0.5);    background: rgba(0,0,0,0.5);
+
+    display: flex;    display: flex;
+
+    justify-content: center;    justify-content: center;
+
+    align-items: center;    align-items: center;
+
+    z-index: 1000;    z-index: 1000;
+
+}}
+
+
+
+.modal-content {.modal-content {
+
+    background: white;    background: white;
+
+    padding: 2rem;    padding: 2rem;
+
+    border-radius: 8px;    border-radius: 8px;
+
+    max-width: 400px;    max-width: 400px;
+
+    width: 90%;    width: 90%;
+
+}}
+
+
+
+.modal-content h4 {.modal-content h4 {
+
+    margin-top: 0;    margin-top: 0;
+
+    color: #2c3e50;    color: #2c3e50;
+
+}}
+
+
+
+.modal-actions {.modal-actions {
+
+    margin-top: 1.5rem;    margin-top: 1.5rem;
+
+    display: flex;    display: flex;
+
+    gap: 1rem;    gap: 1rem;
+
+    justify-content: flex-end;    justify-content: flex-end;
+
+}}
+
+
+
+.btn {.btn {
+
+    padding: 0.5rem 1rem;    padding: 0.5rem 1rem;
+
+    border: none;    border: none;
+
+    border-radius: 4px;    border-radius: 4px;
+
+    cursor: pointer;    cursor: pointer;
+
+    font-weight: bold;    font-weight: bold;
+
+}}
+
+
+
+.btn-primary {.btn-primary {
+
+    background: #007bff;    background: #007bff;
+
+    color: white;    color: white;
+
+}}
+
+
+
+.btn-primary:hover {.btn-primary:hover {
+
+    background: #0056b3;    background: #0056b3;
+
+}}
+
+
+
+.btn-secondary {.btn-secondary {
+
+    background: #6c757d;    background: #6c757d;
+
+    color: white;    color: white;
+
+}}
+
+
+
+.btn-secondary:hover {.btn-secondary:hover {
+
+    background: #5a6268;    background: #5a6268;
+
+}}
+
+
+
+/* Responsive *//* Responsive */
+
+@media (max-width: 768px) {@media (max-width: 768px) {
+
+    .funnel-stages {    .funnel-stages {
+
+        grid-template-columns: 1fr;        grid-template-columns: 1fr;
+
+    }    }
+
+        
+
+    .card-actions {    .card-actions {
+
+        flex-direction: column;        flex-direction: column;
+
+        align-items: stretch;        align-items: stretch;
+
+    }    }
+
+        
+
+    .move-buttons {    .move-buttons {
+
+        justify-content: center;        justify-content: center;
+
+        margin-top: 0.5rem;        margin-top: 0.5rem;
+
+    }    }
+
+        
+
+    .info-content {    .info-content {
+
+        flex-direction: column;        flex-direction: column;
+
+        text-align: center;        text-align: center;
+
+    }    }
+
+}}
+
+</style></style>
+
+{% endblock %}{% endblock %}
+
+
+
+{% block extra_js %}{% block extra_js %}
+
+<script><script>
+
+// Variables globales// Variables globales
+
+let currentConversationId = null;let currentConversationId = null;
+
+let currentTargetStage = null;let currentTargetStage = null;
+
+
+
+// Función para ver conversación// Función para ver conversación
+
+function viewConversation(conversationId) {function viewConversation(conversationId) {
+
+    window.open(`/chat/${conversationId}/`, '_blank');    window.open(`/chat/${conversationId}/`, '_blank');
+
+}}
+
+
+
+// Función para mover conversación// Función para mover conversación
+
+function moveConversation(conversationId, targetStage) {function moveConversation(conversationId, targetStage) {
+
+    const conversationCard = document.querySelector(`[data-conversation-id="${conversationId}"]`);    const conversationCard = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+
+    const currentStage = conversationCard.getAttribute('data-current-stage');    const currentStage = conversationCard.getAttribute('data-current-stage');
+
+        
+
+    if (currentStage === targetStage) {    if (currentStage === targetStage) {
+
+        return;        return;
+
+    }    }
+
+        
+
+    currentConversationId = conversationId;    currentConversationId = conversationId;
+
+    currentTargetStage = targetStage;    currentTargetStage = targetStage;
+
+        
+
+    // Mostrar modal de confirmación    // Mostrar modal de confirmación
+
+    document.getElementById('confirmMessage').textContent =     document.getElementById('confirmMessage').textContent = 
+
+        `¿Mover esta conversación a la siguiente etapa?`;        `¿Mover esta conversación a la siguiente etapa?`;
+
+    document.getElementById('confirmModal').style.display = 'flex';    document.getElementById('confirmModal').style.display = 'flex';
+
+}}
+
+
+
+// Función para actualizar embudo de conversación// Función para actualizar embudo de conversación
+
+function updateConversationFunnel(conversationId, funnelType, stage) {function updateConversationFunnel(conversationId, funnelType, stage) {
+
+    fetch(`/api/conversations/${conversationId}/funnel/`, {    fetch(`/api/conversations/${conversationId}/funnel/`, {
+
+        method: 'POST',        method: 'POST',
+
+        headers: {        headers: {
+
+            'Content-Type': 'application/json',            'Content-Type': 'application/json',
+
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+
+        },        },
+
+        body: JSON.stringify({        body: JSON.stringify({
+
+            funnel_type: funnelType,            funnel_type: funnelType,
+
+            funnel_stage: stage            funnel_stage: stage
+
+        })        })
+
+    })    })
+
+    .then(response => response.json())    .then(response => response.json())
+
+    .then(data => {    .then(data => {
+
+        if (data.success) {        if (data.success) {
+
+            // Recargar la página para mostrar los cambios            // Recargar la página para mostrar los cambios
+
+            location.reload();            location.reload();
+
+        } else {        } else {
+
+            alert('Error al mover la conversación');            alert('Error al mover la conversación');
+
+        }        }
+
+    })    })
+
+    .catch(error => {    .catch(error => {
+
+        console.error('Error:', error);        console.error('Error:', error);
+
+        alert('Error al mover la conversación');        alert('Error al mover la conversación');
+
+    });    });
+
+}}
+
+
+
+// Event listeners// Event listeners
+
+document.getElementById('confirmYes').addEventListener('click', function() {document.getElementById('confirmYes').addEventListener('click', function() {
+
+    if (currentConversationId && currentTargetStage) {    if (currentConversationId && currentTargetStage) {
+
+        const funnelType = '{{ funnel_type }}';        const funnelType = '{{ funnel_type }}';
+
+        updateConversationFunnel(currentConversationId, funnelType, currentTargetStage);        updateConversationFunnel(currentConversationId, funnelType, currentTargetStage);
+
+    }    }
+
+    document.getElementById('confirmModal').style.display = 'none';    document.getElementById('confirmModal').style.display = 'none';
+
+});});
+
+
+
+document.getElementById('confirmNo').addEventListener('click', function() {document.getElementById('confirmNo').addEventListener('click', function() {
+
+    document.getElementById('confirmModal').style.display = 'none';    document.getElementById('confirmModal').style.display = 'none';
+
+    currentConversationId = null;    currentConversationId = null;
+
+    currentTargetStage = null;    currentTargetStage = null;
+
+});});
+
+
+
+// Drag and drop functionality// Drag and drop functionality
+
+document.addEventListener('DOMContentLoaded', function() {document.addEventListener('DOMContentLoaded', function() {
+
+    const conversations = document.querySelectorAll('.conversation-card.draggable');    const conversations = document.querySelectorAll('.conversation-card.draggable');
+
+    const dropZones = document.querySelectorAll('.funnel-stage.drop-zone');    const dropZones = document.querySelectorAll('.funnel-stage.drop-zone');
+
+        
+
+    conversations.forEach(conversation => {    conversations.forEach(conversation => {
+
+        conversation.addEventListener('dragstart', function(e) {        conversation.addEventListener('dragstart', function(e) {
+
+            this.classList.add('dragging');            this.classList.add('dragging');
+
+            e.dataTransfer.setData('text/plain', this.getAttribute('data-conversation-id'));            e.dataTransfer.setData('text/plain', this.getAttribute('data-conversation-id'));
+
+        });        });
+
+                
+
+        conversation.addEventListener('dragend', function(e) {        conversation.addEventListener('dragend', function(e) {
+
+            this.classList.remove('dragging');            this.classList.remove('dragging');
+
+        });        });
+
+    });    });
+
+        
+
+    dropZones.forEach(dropZone => {    dropZones.forEach(dropZone => {
+
+        dropZone.addEventListener('dragover', function(e) {        dropZone.addEventListener('dragover', function(e) {
+
+            e.preventDefault();            e.preventDefault();
+
+            this.classList.add('drag-over');            this.classList.add('drag-over');
+
+        });        });
+
+                
+
+        dropZone.addEventListener('dragleave', function(e) {        dropZone.addEventListener('dragleave', function(e) {
+
+            this.classList.remove('drag-over');            this.classList.remove('drag-over');
+
+        });        });
+
+                
+
+        dropZone.addEventListener('drop', function(e) {        dropZone.addEventListener('drop', function(e) {
+
+            e.preventDefault();            e.preventDefault();
+
+            this.classList.remove('drag-over');            this.classList.remove('drag-over');
+
+                        
+
+            const conversationId = e.dataTransfer.getData('text/plain');            const conversationId = e.dataTransfer.getData('text/plain');
+
+            const targetStage = this.getAttribute('data-stage');            const targetStage = this.getAttribute('data-stage');
+
+            const conversationCard = document.querySelector(`[data-conversation-id="${conversationId}"]`);            const conversationCard = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+
+            const currentStage = conversationCard.getAttribute('data-current-stage');            const currentStage = conversationCard.getAttribute('data-current-stage');
+
+                        
+
+            if (currentStage !== targetStage) {            if (currentStage !== targetStage) {
+
+                const funnelType = '{{ funnel_type }}';                const funnelType = '{{ funnel_type }}';
+
+                updateConversationFunnel(conversationId, funnelType, targetStage);                updateConversationFunnel(conversationId, funnelType, targetStage);
+
+            }            }
+
+        });        });
+
+    });    });
+
+});});
+
+</script></script>
+
+{% endblock %}{% endblock %}

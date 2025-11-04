@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+
+{% block title %}Lead #{{ lead.id }} - Plataforma de Mensajería{% endblock %}
+
+{% block content %}
+<div class="lead-detail-container">
+    <div class="page-header">
+        <div>
+            <a href="{% url 'leads' %}" class="btn btn-outline">← Volver</a>
+            <h2>Lead #{{ lead.id }} - {{ lead.contact.display_name }}</h2>
+        </div>
+        <button class="btn btn-primary" onclick="showAddReminderModal()">+ Agregar Recordatorio</button>
+    </div>
+
+    <div class="lead-detail-grid">
+        <!-- Información del Lead -->
+        <div class="section-card">
+            <div class="section-header">
+                <h3>Información del Lead</h3>
+                <button class="btn btn-sm btn-secondary" onclick="showEditLeadModal()">Editar</button>
+            </div>
+            <div class="lead-info">
+                <div class="info-row">
+                    <label>Contacto:</label>
+                    <span><strong>{{ lead.contact.display_name }}</strong></span>
+                </div>
+                <div class="info-row">
+                    <label>Plataforma:</label>
+                    <span class="badge badge-{{ lead.contact.platform.name }}">
+                        {{ lead.contact.platform.name|title }}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <label>Teléfono:</label>
+                    <span>{{ lead.contact.phone|default:"-" }}</span>
+                </div>
+                <div class="info-row">
+                    <label>Email:</label>
+                    <span>{{ lead.contact.email|default:"-" }}</span>
+                </div>
+                <div class="info-row">
+                    <label>País:</label>
+                    <span>{{ lead.contact.country|default:"-" }}</span>
+                </div>
+                <div class="info-row">
+                    <label>Tipo de Caso:</label>
+                    <span class="badge badge-case-{{ lead.case_type }}">
+                        {{ lead.get_case_type_display }}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <label>Estado:</label>
+                    <span class="status-badge status-{{ lead.status }}">
+                        {{ lead.get_status_display }}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <label>Asignado a:</label>
+                    <span>{{ lead.assigned_to.username|default:"No asignado" }}</span>
+                </div>
+                <div class="info-row">
+                    <label>Fecha de Creación:</label>
+                    <span>{{ lead.created_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="info-row">
+                    <label>Última Actualización:</label>
+                    <span>{{ lead.updated_at|date:"d/m/Y H:i" }}</span>
+                </div>
+                <div class="info-row full-width">
+                    <label>Notas:</label>
+                    <p>{{ lead.notes|default:"Sin notas" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recordatorios -->
+        <div class="section-card">
+            <div class="section-header">
+                <h3>🔔 Recordatorios</h3>
+            </div>
+            <div class="reminders-list">
+                {% for reminder in reminders %}
+                <div class="reminder-item {% if reminder.is_completed %}completed{% endif %}">
+                    <div class="reminder-info">
+                        <strong>{{ reminder.title }}</strong>
+                        <p>{{ reminder.description }}</p>
+                        <small>{{ reminder.reminder_date|date:"d/m/Y H:i" }}</small>
+                    </div>
+                    {% if not reminder.is_completed %}
+                    <button class="btn btn-sm btn-success" onclick="completeReminder({{ reminder.id }})">
+                        ✓
+                    </button>
+                    {% else %}
+                    <span class="badge badge-success">Completado</span>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <p class="text-center text-muted">No hay recordatorios</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Conversaciones relacionadas -->
+    <div class="section-card">
+        <div class="section-header">
+            <h3>💬 Conversaciones Relacionadas</h3>
+        </div>
+        <div class="conversations-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Estado</th>
+                        <th>Embudo</th>
+                        <th>Último Mensaje</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conv in conversations %}
+                    <tr>
+                        <td>{{ conv.id }}</td>
+                        <td>
+                            <span class="status-badge status-{{ conv.status }}">
+                                {{ conv.get_status_display }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge">{{ conv.get_funnel_type_display }}</span>
+                            {% if conv.funnel_stage != 'none' %}
+                            <br><small>{{ conv.get_funnel_stage_display }}</small>
+                            {% endif %}
+                        </td>
+                        <td>{{ conv.last_message_at|date:"d/m/Y H:i" }}</td>
+                        <td>
+                            <a href="{% url 'conversation_detail' conv.id %}" class="btn btn-sm btn-primary">
+                                Abrir Chat
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center">No hay conversaciones</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar recordatorio -->
+<div id="addReminderModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Agregar Recordatorio</h3>
+            <span class="close" onclick="closeAddReminderModal()">&times;</span>
+        </div>
+        <form id="addReminderForm" onsubmit="addReminder(event)">
+            <div class="form-group">
+                <label>Título:</label>
+                <input type="text" name="title" required>
+            </div>
+            <div class="form-group">
+                <label>Descripción:</label>
+                <textarea name="description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Fecha y Hora:</label>
+                <input type="datetime-local" name="reminder_date" required>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeAddReminderModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal para editar lead -->
+<div id="editLeadModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Editar Lead</h3>
+            <span class="close" onclick="closeEditLeadModal()">&times;</span>
+        </div>
+        <form id="editLeadForm" onsubmit="updateLead(event)">
+            <div class="form-group">
+                <label>Tipo de Caso:</label>
+                <select name="case_type" required>
+                    <option value="sale" {% if lead.case_type == 'sale' %}selected{% endif %}>Venta</option>
+                    <option value="no_interest" {% if lead.case_type == 'no_interest' %}selected{% endif %}>Sin Interés</option>
+                    <option value="future_contact" {% if lead.case_type == 'future_contact' %}selected{% endif %}>Contacto Futuro</option>
+                    <option value="support" {% if lead.case_type == 'support' %}selected{% endif %}>Soporte</option>
+                    <option value="recovery" {% if lead.case_type == 'recovery' %}selected{% endif %}>Recuperación</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Estado:</label>
+                <select name="status" required>
+                    <option value="new" {% if lead.status == 'new' %}selected{% endif %}>Nuevo</option>
+                    <option value="in_progress" {% if lead.status == 'in_progress' %}selected{% endif %}>En Progreso</option>
+                    <option value="negotiation" {% if lead.status == 'negotiation' %}selected{% endif %}>Negociación</option>
+                    <option value="closed_won" {% if lead.status == 'closed_won' %}selected{% endif %}>Cerrado Ganado</option>
+                    <option value="closed_lost" {% if lead.status == 'closed_lost' %}selected{% endif %}>Cerrado Perdido</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Notas:</label>
+                <textarea name="notes" rows="4">{{ lead.notes }}</textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeEditLeadModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const leadId = {{ lead.id }};
+
+function showAddReminderModal() {
+    document.getElementById('addReminderModal').style.display = 'block';
+}
+
+function closeAddReminderModal() {
+    document.getElementById('addReminderModal').style.display = 'none';
+}
+
+function showEditLeadModal() {
+    document.getElementById('editLeadModal').style.display = 'block';
+}
+
+function closeEditLeadModal() {
+    document.getElementById('editLeadModal').style.display = 'none';
+}
+
+function addReminder(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const data = {
+        lead_id: leadId,
+        title: formData.get('title'),
+        description: formData.get('description'),
+        reminder_date: formData.get('reminder_date')
+    };
+    
+    fetch('/api/reminders/create/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Recordatorio creado exitosamente');
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+function updateLead(event) {
+    event.preventDefault();
+    
+    const formData = new FormData(event.target);
+    const data = {
+        case_type: formData.get('case_type'),
+        status: formData.get('status'),
+        notes: formData.get('notes')
+    };
+    
+    fetch(`/api/leads/${leadId}/update/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Lead actualizado exitosamente');
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+function completeReminder(reminderId) {
+    if (!confirm('¿Marcar este recordatorio como completado?')) return;
+    
+    fetch(`/api/reminders/${reminderId}/complete/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,518 @@
+{% extends 'base.html' %}
+{% block title %}Chat con {{ conversation.contact.display_name }} - Plataforma de Mensajería{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Variables CSS para consistencia */
+:root {
+    --primary-color: #007bff;
+    --danger-color: #dc3545;
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --info-color: #17a2b8;
+    --secondary-color: #6c757d;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+    --border-color: #dee2e6;
+}
+
+/* Estilos del contenedor principal */
+.conversation-detail-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    min-height: 80vh;
+}
+
+.conversation-header {
+    background: var(--light-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem;
+    margin: -1rem -1rem 1rem -1rem;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Estilos de mensajes removido del container principal */
+
+.message {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    max-width: 70%;
+}
+
+.message-sent {
+    background: var(--primary-color);
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
+
+.message-received {
+    background: white;
+    border: 1px solid var(--border-color);
+    margin-right: auto;
+}
+
+.message-header {
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.8;
+}
+
+.message-input-container {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.input-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.message-input-wrapper {
+    flex: 1;
+}
+
+#messageInput {
+    width: 100%;
+    min-height: 60px;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--dark-color);
+}
+
+.btn-secondary {
+    background: var(--secondary-color);
+    color: white;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+/* Alerta de tiempo de respuesta */
+.response-time-alert {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: var(--warning-color);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    display: none;
+    animation: slideIn 0.3s ease;
+    max-width: 300px;
+}
+
+.response-time-alert.danger {
+    background: var(--danger-color);
+}
+
+.response-time-alert .close-alert {
+    float: right;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.btn-whatsapp {
+    background: #25d366;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="conversation-detail-container">
+    <div class="conversation-header">
+        <div class="header-left">
+            <a href="{% url 'dashboard' %}" class="btn btn-outline">← Volver al Dashboard</a>
+            <h3>{{ conversation.contact.display_name }}</h3>
+            <span class="badge">{{ conversation.contact.platform.name|title }}</span>
+            {% if conversation.contact.platform.name == 'whatsapp' %}
+            <button class="btn-whatsapp" onclick="openWhatsApp('{{ conversation.contact.whatsapp_number|default:conversation.contact.platform_user_id }}')" title="Abrir en WhatsApp">
+                📱 Abrir en WhatsApp
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="messagesContainer">
+        {% for message in messages %}
+        <div class="message {% if message.sender_type == 'agent' %}message-sent{% else %}message-received{% endif %}">
+            <div class="message-header">
+                <strong>{{ message.sender_name }}</strong>
+                <small>{{ message.created_at|date:"d/m/Y H:i" }}</small>
+            </div>
+            <div class="message-content">
+                {{ message.content }}
+                {% if message.media_url %}
+                    {% if message.message_type == 'image' %}
+                        <div class="media-container">
+                            <img src="{{ message.media_url }}" alt="Imagen" style="max-width: 200px; border-radius: 4px;">
+                        </div>
+                    {% elif message.message_type == 'video' %}
+                        <div class="media-container">
+                            <video controls style="max-width: 200px;">
+                                <source src="{{ message.media_url }}" type="video/mp4">
+                            </video>
+                        </div>
+                    {% elif message.message_type == 'audio' %}
+                        <div class="media-container">
+                            <audio controls>
+                                <source src="{{ message.media_url }}" type="audio/mpeg">
+                            </audio>
+                        </div>
+                    {% elif message.message_type == 'document' %}
+                        <div class="media-container">
+                            <a href="{{ message.media_url }}" target="_blank" class="btn btn-outline">
+                                📄 Abrir documento
+                            </a>
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div style="text-align: center; color: #666; padding: 2rem;">
+            No hay mensajes en esta conversación
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="message-input-container">
+        <div class="input-controls">
+            <button class="btn btn-secondary" onclick="openTemplatesModal()" title="Usar plantillas">
+                📝 Plantillas
+            </button>
+            <button class="btn btn-secondary" onclick="openFileUpload()" title="Subir archivos">
+                📎 Adjuntar
+            </button>
+            <input type="file" id="fileInput" style="display: none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx" onchange="handleFileSelect(event)">
+        </div>
+        <div class="message-input-wrapper">
+            <textarea id="messageInput" placeholder="Escribe tu mensaje aquí..." rows="3"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="sendMessage()" id="sendBtn">Enviar</button>
+    </div>
+</div>
+
+<!-- Alerta de tiempo de respuesta -->
+<div id="responseTimeAlert" class="response-time-alert">
+    <button class="close-alert" onclick="closeResponseAlert()">&times;</button>
+    <div id="alertContent">
+        ⚠️ <strong>Tiempo de respuesta:</strong>
+        <div id="alertMessage"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const conversationId = {{ conversation.id }};
+const platform = '{{ conversation.contact.platform.name }}';
+const recipientId = '{{ conversation.contact.platform_user_id }}';
+
+function openWhatsApp(phoneNumber) {
+    if (phoneNumber) {
+        window.open(`https://wa.me/${phoneNumber}`, '_blank');
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendBtn');
+    const message = input.value.trim();
+    
+    if (!message) {
+        alert('Por favor escribe un mensaje');
+        return;
+    }
+    
+    sendButton.disabled = true;
+    sendButton.textContent = 'Enviando...';
+    
+    fetch('/api/whatsapp/send-message/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            conversation_id: conversationId,
+            message: message,
+            platform: platform,
+            recipient_id: recipientId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            input.value = '';
+            loadMessages(); // Recargar mensajes
+        } else {
+            alert('Error al enviar mensaje: ' + (data.error || 'Error desconocido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al enviar mensaje');
+    })
+    .finally(() => {
+        sendButton.disabled = false;
+        sendButton.textContent = 'Enviar';
+    });
+}
+
+function loadMessages() {
+    fetch(`/api/conversations/${conversationId}/messages/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Actualizar los mensajes (implementación simplificada)
+                location.reload();
+            }
+        })
+        .catch(error => console.error('Error al cargar mensajes:', error));
+}
+
+// Enter para enviar mensaje
+document.getElementById('messageInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+// Funciones para plantillas
+function openTemplatesModal() {
+    // Abrir modal de plantillas o redirigir a la página de plantillas
+    window.open('/templates/', '_blank');
+}
+
+// Funciones para manejo de archivos
+function openFileUpload() {
+    document.getElementById('fileInput').click();
+}
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        // Mostrar preview del archivo seleccionado
+        const fileName = file.name;
+        const fileSize = (file.size / 1024 / 1024).toFixed(2); // MB
+        
+        if (confirm(`¿Deseas enviar el archivo "${fileName}" (${fileSize} MB)?`)) {
+            uploadFile(file);
+        }
+    }
+}
+
+function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('conversation_id', conversationId);
+    formData.append('platform', platform);
+    formData.append('recipient_id', recipientId);
+    
+    // Mostrar indicador de carga
+    const sendButton = document.getElementById('sendBtn');
+    const originalText = sendButton.textContent;
+    sendButton.disabled = true;
+    sendButton.textContent = 'Enviando archivo...';
+    
+    fetch('/api/send-file-message/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Limpiar input de archivo
+            document.getElementById('fileInput').value = '';
+            loadMessages(); // Recargar mensajes
+        } else {
+            alert('Error al enviar archivo: ' + (data.error || 'Error desconocido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al enviar archivo');
+    })
+    .finally(() => {
+        sendButton.disabled = false;
+        sendButton.textContent = originalText;
+    });
+}
+
+// Sistema de alertas de tiempo de respuesta
+let responseTimeInterval;
+let lastMessageTime = null;
+
+function initResponseTimeMonitoring() {
+    // Encontrar el último mensaje del contacto (no del agente)
+    const messages = document.querySelectorAll('.message-received');
+    if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        const timeElement = lastMessage.querySelector('small');
+        if (timeElement) {
+            // Extraer la fecha del último mensaje
+            const messageTime = parseMessageTime(timeElement.textContent);
+            if (messageTime) {
+                lastMessageTime = messageTime;
+                startResponseTimeCheck();
+            }
+        }
+    }
+}
+
+function parseMessageTime(timeString) {
+    // Formato esperado: "dd/mm/yyyy HH:mm"
+    try {
+        const [datePart, timePart] = timeString.trim().split(' ');
+        const [day, month, year] = datePart.split('/');
+        const [hours, minutes] = timePart.split(':');
+        
+        return new Date(year, month - 1, day, hours, minutes);
+    } catch (e) {
+        console.error('Error parsing message time:', e);
+        return null;
+    }
+}
+
+function startResponseTimeCheck() {
+    if (responseTimeInterval) {
+        clearInterval(responseTimeInterval);
+    }
+    
+    responseTimeInterval = setInterval(function() {
+        if (!lastMessageTime) return;
+        
+        const now = new Date();
+        const timeDiff = (now - lastMessageTime) / 1000; // segundos
+        
+        if (timeDiff >= 60 && timeDiff < 300) { // 1-5 minutos
+            showResponseAlert('Han pasado más de 1 minuto sin responder', 'warning');
+        } else if (timeDiff >= 300 && timeDiff < 600) { // 5-10 minutos
+            showResponseAlert('Han pasado más de 5 minutos sin responder', 'danger');
+        } else if (timeDiff >= 600) { // más de 10 minutos
+            showResponseAlert('Han pasado más de 10 minutos sin responder', 'danger');
+        }
+    }, 30000); // Verificar cada 30 segundos
+}
+
+function showResponseAlert(message, type = 'warning') {
+    const alert = document.getElementById('responseTimeAlert');
+    const messageElement = document.getElementById('alertMessage');
+    
+    messageElement.textContent = message;
+    alert.className = `response-time-alert ${type}`;
+    alert.style.display = 'block';
+    
+    // Auto-ocultar después de 10 segundos
+    setTimeout(() => {
+        if (alert.style.display === 'block') {
+            alert.style.display = 'none';
+        }
+    }, 10000);
+}
+
+function closeResponseAlert() {
+    document.getElementById('responseTimeAlert').style.display = 'none';
+}
+
+// Auto-scroll al final de mensajes
+document.addEventListener('DOMContentLoaded', function() {
+    const messagesContainer = document.getElementById('messagesContainer');
+    if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // Inicializar monitoreo de tiempo de respuesta
+    initResponseTimeMonitoring();
+});
+
+// Limpiar interval al salir de la página
+window.addEventListener('beforeunload', function() {
+    if (responseTimeInterval) {
+        clearInterval(responseTimeInterval);
+    }
+});
+</script>
+{% endblock %}

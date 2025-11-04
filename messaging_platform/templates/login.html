@@ -1,0 +1,51 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Plataforma de Mensajería</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>📱 Plataforma de Mensajería</h1>
+                <p>Gestión Multicanal de Comunicaciones</p>
+            </div>
+            
+            {% if error %}
+            <div class="alert alert-error">
+                {{ error }}
+            </div>
+            {% endif %}
+            
+            <form method="post" action="{% url 'login' %}" class="login-form">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="email">Correo Electrónico</label>
+                    <input type="email" id="email" name="email" required autofocus 
+                           placeholder="usuario@ejemplo.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" name="password" required 
+                           placeholder="••••••••">
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-block">
+                    Iniciar Sesión
+                </button>
+            </form>
+            
+            <div class="login-footer">
+                <p>Sistema de gestión de mensajería multicanal</p>
+                <p><small>WhatsApp • Facebook Messenger • Telegram</small></p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

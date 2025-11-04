@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}Reportes - Plataforma de Mensajería{% endblock %}
+{% block content %}
+<div class="reports-container">
+    <div class="page-header">
+        <h2>Reportes y Estadísticas</h2>
+        <form method="get" style="display: inline;">
+            <select name="days" onchange="this.form.submit()">
+                <option value="7" {% if days == 7 %}selected{% endif %}>Últimos 7 días</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>Últimos 30 días</option>
+                <option value="90" {% if days == 90 %}selected{% endif %}>Últimos 90 días</option>
+            </select>
+        </form>
+    </div>
+    
+    <div class="reports-grid">
+        <div class="section-card">
+            <h3>📊 Contactos por Plataforma</h3>
+            <table>
+                <thead>
+                    <tr><th>Plataforma</th><th>Cantidad</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in contacts_by_platform %}
+                    <tr>
+                        <td><span class="badge badge-{{ item.platform__name }}">{{ item.platform__name|title }}</span></td>
+                        <td>{{ item.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-card">
+            <h3>💬 Conversaciones por Plataforma</h3>
+            <table>
+                <thead>
+                    <tr><th>Plataforma</th><th>Cantidad</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in conversations_by_platform %}
+                    <tr>
+                        <td><span class="badge badge-{{ item.contact__platform__name }}">{{ item.contact__platform__name|title }}</span></td>
+                        <td>{{ item.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-card">
+            <h3>🎯 Leads por Tipo</h3>
+            <table>
+                <thead>
+                    <tr><th>Tipo</th><th>Cantidad</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in leads_by_type %}
+                    <tr>
+                        <td>{{ item.case_type }}</td>
+                        <td>{{ item.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-card">
+            <h3>📈 Leads por Estado</h3>
+            <table>
+                <thead>
+                    <tr><th>Estado</th><th>Cantidad</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in leads_by_status %}
+                    <tr>
+                        <td>{{ item.status }}</td>
+                        <td>{{ item.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-card">
+            <h3>🌍 Conversaciones por País</h3>
+            <table>
+                <thead>
+                    <tr><th>País</th><th>Cantidad</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in conversations_by_country %}
+                    <tr>
+                        <td>{{ item.contact__country|default:"Sin especificar" }}</td>
+                        <td>{{ item.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-card">
+            <h3>👥 Actividad por Usuario</h3>
+            <table>
+                <thead>
+                    <tr><th>Usuario</th><th>Acciones</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in activity_by_user %}
+                    <tr>
+                        <td>{{ item.user__username }}</td>
+                        <td>{{ item.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_css %}
+<style>
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+</style>
+{% endblock %}
+
