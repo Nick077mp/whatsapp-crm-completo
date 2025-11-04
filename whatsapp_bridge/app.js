@@ -56,30 +56,93 @@ function formatColombianNumber(rawNumber) {
 }
 
 /**
- * Validar JID y extraer número colombiano
+ * Funciones utilitarias para manejar JIDs y LIDs
  */
-function validateAndExtractNumber(jid) {
+function isLidUser(jid) {
+    return jid && jid.includes('@lid');
+}
+
+function isJidUser(jid) {
+    return jid && jid.includes('@s.whatsapp.net');
+}
+
+function isGroupJid(jid) {
+    return jid && jid.includes('@g.us');
+}
+
+/**
+ * Validar JID (acepta tanto LIDs como JIDs estándar) y extraer información de contacto
+ */
+function validateAndExtractNumber(jid, remoteJidAlt = null) {
     console.log("🔍 VALIDANDO JID:", jid);
-    console.log("🔍 JID incluye @s.whatsapp.net:", jid.includes('@s.whatsapp.net'));
-    console.log("🔍 JID incluye @lid:", jid.includes('@lid'));
-    console.log("🔍 JID incluye @c.us:", jid.includes('@c.us'));
+    console.log("🔍 remoteJidAlt:", remoteJidAlt);
+    console.log("🔍 isLidUser:", isLidUser(jid));
+    console.log("🔍 isJidUser:", isJidUser(jid));
     console.log("🔍 JID incluye @g.us:", jid.includes('@g.us'));
     
-    // RECHAZAR todo lo que no sea @s.whatsapp.net
-    if (!jid.includes('@s.whatsapp.net')) {
-        console.log(`❌ JID RECHAZADO: ${jid} - Motivo: No es @s.whatsapp.net`);
-        throw new Error(`JID rechazado - Solo se aceptan JIDs estándar: ${jid}`);
+    // ✅ ACTUALIZADO: Acepta tanto LIDs como JIDs estándar y grupos
+    if (!(isLidUser(jid) || isJidUser(jid) || isGroupJid(jid))) {
+        console.log(`❌ JID RECHAZADO: ${jid} - Motivo: Formato no soportado`);
+        throw new Error(`JID rechazado - Formato no válido: ${jid}`);
     }
     
-    // Extraer número
-    const number = jid.replace('@s.whatsapp.net', '');
+    // 🔍 EXTRAER NÚMERO REAL - Para LIDs, usar remoteJidAlt
+    console.log("📞 EXTRAYENDO NÚMERO REAL - JID:", jid);
+    console.log("📞 EXTRAYENDO NÚMERO REAL - remoteJidAlt:", remoteJidAlt);
     
-    // Validar que sea número colombiano
-    if (!number.match(/^57\d{10}$/)) {
-        throw new Error(`Número rechazado - Solo números colombianos: ${number}`);
+    let extractedNumber = null;
+    let sendToJid = null;
+    
+    if (remoteJidAlt && !remoteJidAlt.includes('@lid')) {
+        // Para LIDs, el número real está en remoteJidAlt
+        extractedNumber = remoteJidAlt.replace('@s.whatsapp.net', '');
+        sendToJid = remoteJidAlt;
+        console.log("✅ Número extraído de remoteJidAlt:", extractedNumber);
+    } else if (isJidUser(jid)) {
+        // Para JIDs tradicionales, extraer directamente
+        extractedNumber = jid.replace('@s.whatsapp.net', '');
+        sendToJid = jid;
+        console.log("✅ Número extraído del JID principal:", extractedNumber);
+    } else if (isLidUser(jid)) {
+        // LID sin remoteJidAlt válido - usar LID como contactId
+        console.log("⚠️ LID sin remoteJidAlt válido, usando LID como identificador");
+        return {
+            phoneNumber: null,
+            contactId: jid,
+            sendToJid: jid,
+            isLid: true,
+            isGroup: false
+        };
     }
     
-    return formatColombianNumber(number);
+    if (!extractedNumber) {
+        throw new Error(`No se pudo extraer número del JID: ${jid}`);
+    }
+    
+    // Formatear número si es válido (internacional)
+    let formattedNumber = null;
+    if (extractedNumber.length >= 10 && extractedNumber.length <= 15) {
+        if (extractedNumber.match(/^57\d{10}$/)) {
+            // Número colombiano
+            formattedNumber = `+57 ${extractedNumber.substring(2, 5)} ${extractedNumber.substring(5, 8)} ${extractedNumber.substring(8)}`;
+        } else {
+            // Otros números internacionales 
+            formattedNumber = `+${extractedNumber}`;
+        }
+        console.log("📞 Número real extraído:", formattedNumber);
+    }
+
+    // Usar número formateado como contactId si está disponible
+    const contactId = formattedNumber || extractedNumber;
+    console.log("🆔 Contact ID asignado:", contactId);
+    
+    return {
+        phoneNumber: formattedNumber,
+        contactId: contactId,
+        sendToJid: sendToJid,
+        isLid: isLidUser(jid),
+        isGroup: isGroupJid(jid)
+    };
 }
 
 /**
@@ -249,8 +312,9 @@ async function initializeWhatsApp() {
                         const remoteJid = message.key.remoteJid;
                         const cleanJid = remoteJid.split(':')[0];
                         
-                        // Validar JID
-                        const phoneNumber = validateAndExtractNumber(cleanJid);
+                        // Validar y procesar JID (acepta LIDs y JIDs)
+                        const remoteJidAlt = message.key.remoteJidAlt;
+                        const contactInfo = validateAndExtractNumber(cleanJid, remoteJidAlt);
                         
                         // Extraer contenido real del mensaje saliente
                         const messageId = message.key.id;
@@ -281,13 +345,16 @@ async function initializeWhatsApp() {
                         }
                         
                         const outgoingData = {
-                            to: phoneNumber,
+                            to: contactInfo.phoneNumber || contactInfo.contactId, // Usar número si está disponible, sino usar contactId
+                            contact_id: contactInfo.contactId, // LID/JID normalizado como ID principal
+                            phone_number: contactInfo.phoneNumber, // Número real si está disponible
                             from: '+57 302 2620031',
                             message_id: messageId,
                             timestamp: Math.floor(timestamp / 1000),
                             type: messageType,
                             content: messageContent,
-                            from_me: true
+                            from_me: true,
+                            is_lid: contactInfo.isLid
                         };
                         
                         console.log("📤 Mensaje saliente REAL detectado:", outgoingData);
@@ -318,8 +385,12 @@ async function initializeWhatsApp() {
                     console.log(`🔍 PROCESANDO MENSAJE ENTRANTE - JID RAW COMPLETO: ${from}`);
                     console.log(`🔍 Tipo de JID detectado:`, from.includes('@lid') ? 'LID' : from.includes('@s.whatsapp.net') ? 'STANDARD' : 'OTRO');
                     
-                    // VALIDACIÓN ESTRICTA: Solo JIDs colombianos @s.whatsapp.net
-                    const phoneNumber = validateAndExtractNumber(from);
+                    // ✅ CRÍTICO: Extraer remoteJidAlt que contiene el número real para envío
+                    const remoteJidAlt = message.key.remoteJidAlt;
+                    const participantPn = (message.key).participantPn ?? message.participantPn ?? null;
+                    
+                    // VALIDACIÓN ACTUALIZADA: Acepta tanto LIDs como JIDs estándar
+                    const contactInfo = validateAndExtractNumber(from, remoteJidAlt);
                     
                     // Procesar contenido del mensaje
                     const messageId = message.key.id;
@@ -336,14 +407,24 @@ async function initializeWhatsApp() {
                         textContent = message.message.extendedTextMessage.text;
                     }
                     
+                    console.log("🎯 NÚMERO REAL PARA ENVÍO detectado en remoteJidAlt:", contactInfo.sendToJid);
+                    
                     const webhookData = {
-                        from: phoneNumber,
+                        from: contactInfo.phoneNumber || contactInfo.contactId, // Usar número si está disponible, sino contactId
+                        contact_id: contactInfo.contactId, // LID/JID normalizado como ID principal
+                        phone_number: contactInfo.phoneNumber, // Número real si está disponible
+                        send_to_jid: contactInfo.sendToJid, // ✅ JID REAL para envío de respuestas
+                        remote_jid_alt: remoteJidAlt, // JID alternativo (número real)
+                        participant_pn: participantPn, // Número de participante si está disponible
                         received_at: '+57 302 2620031', // Número fijo del negocio
                         message_id: messageId,
                         timestamp: timestamp,
                         type: mediaInfo.messageType,
                         content: textContent || mediaInfo.content,
-                        media_url: mediaInfo.mediaUrl
+                        media_url: mediaInfo.mediaUrl,
+                        is_lid: contactInfo.isLid,
+                        is_group: contactInfo.isGroup,
+                        original_jid: from
                     };
                     
                     console.log("📨 Mensaje procesado:", webhookData);
@@ -354,7 +435,8 @@ async function initializeWhatsApp() {
                         content: textContent || mediaInfo.content,
                         type: mediaInfo.messageType,
                         timestamp: timestamp,
-                        jid: phoneNumber
+                        contactId: contactInfo.contactId,
+                        phoneNumber: contactInfo.phoneNumber
                     });
                     
                     // Limpiar cache después de 5 minutos (mantener solo 100 mensajes recientes)
@@ -389,8 +471,8 @@ async function initializeWhatsApp() {
                         // Limpiar JID de sufijos adicionales (como :49, :50, etc.)
                         const cleanJid = remoteJid.split(':')[0];
                         
-                        // VALIDACIÓN: Solo procesar JIDs válidos
-                        const phoneNumber = validateAndExtractNumber(cleanJid);
+                        // VALIDACIÓN: Procesar JIDs válidos (LIDs y JIDs estándar)
+                        const contactInfo = validateAndExtractNumber(cleanJid);
                         
                         // Obtener detalles del mensaje
                         const messageId = update.key.id;
@@ -431,13 +513,16 @@ async function initializeWhatsApp() {
                         }
                         
                         const outgoingData = {
-                            to: phoneNumber,
+                            to: contactInfo.phoneNumber || contactInfo.contactId,
+                            contact_id: contactInfo.contactId,
+                            phone_number: contactInfo.phoneNumber,
                             from: '+57 302 2620031',
                             message_id: messageId,
                             timestamp: Math.floor(timestamp / 1000),
                             type: messageType,
                             content: messageContent,
-                            from_me: true
+                            from_me: true,
+                            is_lid: contactInfo.isLid
                         };
                         
                         console.log("📤 Mensaje saliente detectado:", outgoingData);
