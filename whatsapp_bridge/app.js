@@ -37,22 +37,134 @@ fs.ensureDirSync(MEDIA_DIR);
  */
 
 /**
- * Validar y formatear números colombianos únicamente
+ * SOPORTE INTERNACIONAL COMPLETO
  */
-function formatColombianNumber(rawNumber) {
-    console.log("🇨🇴 Formateando número colombiano:", rawNumber);
+const INTERNATIONAL_COUNTRIES = {
+    '1': { name: 'USA/Canadá', length: 11 },
+    '52': { name: 'México', length: 12 },
+    '57': { name: 'Colombia', length: 12 },
+    '58': { name: 'Venezuela', length: 12 },
+    '54': { name: 'Argentina', length: 13 },
+    '55': { name: 'Brasil', length: 13 },
+    '56': { name: 'Chile', length: 11 },
+    '51': { name: 'Perú', length: 11 },
+    '593': { name: 'Ecuador', length: 12 },
+    '507': { name: 'Panamá', length: 11 },
+    '34': { name: 'España', length: 11 },
+    '33': { name: 'Francia', length: 12 },
+    '44': { name: 'Reino Unido', length: 13 },
+    '49': { name: 'Alemania', length: 13 },
+    '39': { name: 'Italia', length: 13 },
+};
+
+/**
+ * Detectar código de país de un número
+ */
+function detectCountryCode(cleanNumber) {
+    // Probar códigos de 3 dígitos primero, luego 2, luego 1
+    const codes = Object.keys(INTERNATIONAL_COUNTRIES).sort((a, b) => b.length - a.length);
     
-    // Limpiar número
-    const digits = rawNumber.replace(/\D/g, '');
+    for (const code of codes) {
+        if (cleanNumber.startsWith(code)) {
+            return code;
+        }
+    }
+    return null;
+}
+
+/**
+ * Formatear número internacional según su país
+ */
+function formatInternationalNumber(rawNumber) {
+    console.log("� Formateando número internacional:", rawNumber);
     
-    // Debe ser 57 + 10 dígitos (colombiano completo)
-    if (digits.startsWith('57') && digits.length === 12) {
-        const formatted = `+57 ${digits.substring(2, 5)} ${digits.substring(5, 8)} ${digits.substring(8)}`;
-        console.log("✅ Número colombiano formateado:", formatted);
-        return formatted;
+    // Limpiar número (solo dígitos)
+    const cleanNumber = rawNumber.replace(/\D/g, '');
+    
+    if (cleanNumber.length < 10) {
+        throw new Error(`Número muy corto: ${rawNumber}`);
     }
     
-    throw new Error(`Número no válido: ${rawNumber}`);
+    // Detectar código de país
+    const countryCode = detectCountryCode(cleanNumber);
+    if (!countryCode) {
+        throw new Error(`Código de país no reconocido: ${rawNumber}`);
+    }
+    
+    const countryInfo = INTERNATIONAL_COUNTRIES[countryCode];
+    
+    // Validar longitud (permitir ±1 dígito de variación)
+    if (cleanNumber.length < countryInfo.length - 1 || cleanNumber.length > countryInfo.length + 1) {
+        console.warn(`⚠️ Longitud no estándar para ${countryInfo.name}: ${cleanNumber.length} vs ${countryInfo.length} esperada`);
+    }
+    
+    // Formatear según el país
+    const formatted = formatByCountry(cleanNumber, countryCode);
+    console.log(`✅ Número ${countryInfo.name} formateado:`, formatted);
+    return formatted;
+}
+
+/**
+ * Aplicar formato específico por país
+ */
+function formatByCountry(cleanNumber, countryCode) {
+    switch (countryCode) {
+        case '1': // USA/Canadá
+            return `+1 ${cleanNumber.substring(1, 4)} ${cleanNumber.substring(4, 7)} ${cleanNumber.substring(7, 11)}`;
+        
+        case '52': // México
+            return `+52 ${cleanNumber.substring(2, 4)} ${cleanNumber.substring(4, 8)} ${cleanNumber.substring(8, 12)}`;
+        
+        case '57': // Colombia
+            return `+57 ${cleanNumber.substring(2, 5)} ${cleanNumber.substring(5, 8)} ${cleanNumber.substring(8, 12)}`;
+        
+        case '44': // Reino Unido
+            return `+44 ${cleanNumber.substring(2, 6)} ${cleanNumber.substring(6, 12)}`;
+        
+        case '34': // España
+            return `+34 ${cleanNumber.substring(2, 5)} ${cleanNumber.substring(5, 8)} ${cleanNumber.substring(8, 11)}`;
+        
+        case '51': // Perú
+            return `+51 ${cleanNumber.substring(2, 5)} ${cleanNumber.substring(5, 8)} ${cleanNumber.substring(8, 11)}`;
+        
+        case '507': // Panamá
+            return `+507 ${cleanNumber.substring(3, 7)} ${cleanNumber.substring(7, 11)}`;
+        
+        default:
+            // Formato genérico
+            const rest = cleanNumber.substring(countryCode.length);
+            if (rest.length >= 6) {
+                const mid = Math.floor(rest.length / 2);
+                return `+${countryCode} ${rest.substring(0, mid)} ${rest.substring(mid)}`;
+            } else {
+                return `+${countryCode} ${rest}`;
+            }
+    }
+}
+
+/**
+ * Formatear números (ACTUALIZADO CON SOPORTE INTERNACIONAL)
+ */
+function formatColombianNumber(rawNumber) {
+    console.log("📱 Formateando número (internacional):", rawNumber);
+    
+    try {
+        // Intentar formateo internacional primero
+        return formatInternationalNumber(rawNumber);
+    } catch (error) {
+        console.warn("⚠️ Formateo internacional falló, usando formato legacy:", error.message);
+        
+        // Fallback al formato original colombiano
+        const digits = rawNumber.replace(/\D/g, '');
+        
+        if (digits.startsWith('57') && digits.length === 12) {
+            const formatted = `+57 ${digits.substring(2, 5)} ${digits.substring(5, 8)} ${digits.substring(8)}`;
+            console.log("✅ Número colombiano formateado:", formatted);
+            return formatted;
+        }
+        
+        throw new Error(`Número no válido: ${rawNumber}`);
+    }
 }
 
 /**
@@ -119,17 +231,18 @@ function validateAndExtractNumber(jid, remoteJidAlt = null) {
         throw new Error(`No se pudo extraer número del JID: ${jid}`);
     }
     
-    // Formatear número si es válido (internacional)
+    // Formatear número usando el sistema internacional completo
     let formattedNumber = null;
     if (extractedNumber.length >= 10 && extractedNumber.length <= 15) {
-        if (extractedNumber.match(/^57\d{10}$/)) {
-            // Número colombiano
-            formattedNumber = `+57 ${extractedNumber.substring(2, 5)} ${extractedNumber.substring(5, 8)} ${extractedNumber.substring(8)}`;
-        } else {
-            // Otros números internacionales 
+        try {
+            formattedNumber = formatColombianNumber(extractedNumber);
+            console.log("📞 Número internacional extraído:", formattedNumber);
+        } catch (error) {
+            console.warn("⚠️ No se pudo formatear como número internacional:", error.message);
+            // Fallback básico
             formattedNumber = `+${extractedNumber}`;
+            console.log("📞 Número básico extraído:", formattedNumber);
         }
-        console.log("📞 Número real extraído:", formattedNumber);
     }
 
     // Usar número formateado como contactId si está disponible
@@ -592,17 +705,28 @@ app.post('/send-message', async (req, res) => {
             });
         }
         
-        // Normalizar número para envío (formato: 573001234567@s.whatsapp.net)
+        // Normalizar número para envío (CON SOPORTE INTERNACIONAL)
         let targetJid;
         if (to.includes('@')) {
             targetJid = to;
         } else {
-            // Convertir número formateado a JID
+            // Convertir número formateado a JID - ahora con soporte internacional
             const cleanNumber = to.replace(/\D/g, '');
-            if (cleanNumber.startsWith('57') && cleanNumber.length === 12) {
-                targetJid = `${cleanNumber}@s.whatsapp.net`;
+            
+            // Validar longitud mínima y máxima para números internacionales
+            if (cleanNumber.length >= 10 && cleanNumber.length <= 15) {
+                // Verificar si es un código de país reconocido
+                const countryCode = detectCountryCode(cleanNumber);
+                if (countryCode && INTERNATIONAL_COUNTRIES[countryCode]) {
+                    targetJid = `${cleanNumber}@s.whatsapp.net`;
+                    console.log(`✅ Número ${INTERNATIONAL_COUNTRIES[countryCode].name} válido para envío: ${targetJid}`);
+                } else {
+                    // Fallback para números no reconocidos pero con longitud válida
+                    targetJid = `${cleanNumber}@s.whatsapp.net`;
+                    console.log(`⚠️ Número internacional no reconocido, enviando de todos modos: ${targetJid}`);
+                }
             } else {
-                throw new Error('Número no válido para envío');
+                throw new Error('Número no válido para envío: longitud incorrecta');
             }
         }
         

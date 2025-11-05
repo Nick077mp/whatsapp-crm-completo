@@ -1667,9 +1667,20 @@ def api_send_file_message(request):
             full_file_url = request.build_absolute_uri(file_url)
             print(f"🌐 URL completa del archivo: {full_file_url}")
             
+            # Determinar el destinatario correcto para WhatsApp
+            # Si platform_user_id ya es un JID, usarlo tal cual
+            to_recipient = conversation.contact.platform_user_id
+            if '@' not in to_recipient:
+                # Es un número, necesitamos convertirlo a JID
+                # Limpiar y normalizar el número
+                clean_number = ''.join(filter(str.isdigit, to_recipient))
+                if clean_number:
+                    to_recipient = f"{clean_number}@s.whatsapp.net"
+                    print(f"📞 Número convertido a JID: {conversation.contact.platform_user_id} → {to_recipient}")
+            
             # Preparar datos para WhatsApp Bridge  
             whatsapp_data = {
-                'to': conversation.contact.platform_user_id,
+                'to': to_recipient,
                 'message': message_text or " ",  # Espacio mínimo para pasar validación
                 'type': message_type,
                 'media_url': full_file_url,
@@ -1870,4 +1881,43 @@ def upload_media_view(request):
             'success': False,
             'error': f'Error subiendo archivo: {str(e)}'
         }, status=500)
+
+
+@csrf_exempt
+def api_mexican_contacts(request):
+    """
+    🇲🇽 SOLUCIÓN ROBUSTA: Endpoint para sincronizar contactos mexicanos con el bridge
+    """
+    if request.method == 'GET':
+        try:
+            # Buscar todos los contactos mexicanos
+            whatsapp_platform = Platform.objects.get(name='whatsapp')
+            mexican_contacts = Contact.objects.filter(
+                platform=whatsapp_platform,
+                phone__startswith='+52'
+            ).values('id', 'phone', 'platform_user_id', 'name')
+            
+            contacts_list = list(mexican_contacts)
+            
+            return JsonResponse({
+                'success': True,
+                'contacts': contacts_list,
+                'count': len(contacts_list)
+            })
+            
+        except Platform.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Plataforma WhatsApp no encontrada'
+            }, status=404)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Error obteniendo contactos mexicanos: {str(e)}'
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Método no permitido'
+    }, status=405)
 

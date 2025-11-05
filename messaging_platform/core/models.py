@@ -67,39 +67,68 @@ class Contact(models.Model):
     
     @property
     def whatsapp_number(self):
-        """Obtener número limpio para enlaces de WhatsApp"""
+        """Obtener número limpio para enlaces de WhatsApp (INTERNACIONAL)"""
+        from .utils.international_phone import obtener_numero_para_whatsapp, formatear_numero_internacional
+        
         if self.platform.name != 'whatsapp':
             return None
             
-        # Usar el phone si está disponible y es válido
+        # Intentar con el phone primero
         if self.phone:
-            # Limpiar el número de formatos como +57 300 734 1192
+            # Si ya está formateado correctamente, obtener versión limpia
+            numero_formateado = formatear_numero_internacional(self.phone)
+            if numero_formateado:
+                return obtener_numero_para_whatsapp(numero_formateado)
+                
+            # Si phone tiene solo 10 dígitos, asumir Colombia (retrocompatibilidad)
             clean_phone = ''.join(filter(str.isdigit, self.phone))
-            
-            # Si es un número colombiano válido, devolverlo
-            if clean_phone.startswith('57') and len(clean_phone) == 12:
-                return clean_phone
-            elif len(clean_phone) == 10:
-                # Agregar código de país colombiano si falta
+            if len(clean_phone) == 10 and clean_phone.startswith('3'):
                 return f"57{clean_phone}"
                 
-        # Si no hay phone válido, intentar extraer del platform_user_id
+        # Intentar con platform_user_id
         if self.platform_user_id:
             # Limpiar prefijos como WA-
             clean_id = self.platform_user_id.replace('WA-', '').replace('-', '')
             
-            # Si parece un número colombiano válido
-            if clean_id.startswith('57') and len(clean_id) == 12:
-                return clean_id
-                
-            # Si el ID contiene un número colombiano válido
-            import re
-            colombian_match = re.search(r'57\d{10}', clean_id)
-            if colombian_match:
-                return colombian_match.group(0)
+            # Intentar formatear como número internacional
+            numero_formateado = formatear_numero_internacional(clean_id)
+            if numero_formateado:
+                return obtener_numero_para_whatsapp(numero_formateado)
                 
         # Fallback: usar platform_user_id limpio
         return ''.join(filter(str.isdigit, self.platform_user_id or ''))
+    
+    @property
+    def country_info(self):
+        """Información del país del contacto"""
+        from .utils.international_phone import obtener_info_pais
+        
+        # Intentar obtener info del país basado en el número
+        numero = self.phone or self.platform_user_id
+        if numero:
+            return obtener_info_pais(numero)
+        return None
+    
+    @property 
+    def formatted_phone(self):
+        """Número de teléfono formateado internacionalmente"""
+        from .utils.international_phone import formatear_numero_internacional
+        
+        # Intentar formatear el phone
+        if self.phone:
+            formatted = formatear_numero_internacional(self.phone)
+            if formatted:
+                return formatted
+                
+        # Intentar formatear el platform_user_id
+        if self.platform_user_id:
+            clean_id = self.platform_user_id.replace('WA-', '').replace('-', '')
+            formatted = formatear_numero_internacional(clean_id)
+            if formatted:
+                return formatted
+                
+        # Fallback: devolver phone original o platform_user_id
+        return self.phone or self.platform_user_id
     
     @property
     def display_initials(self):

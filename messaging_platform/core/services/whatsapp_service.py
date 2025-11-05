@@ -250,35 +250,56 @@ class WhatsAppService:
             return {'success': False, 'error': str(e)}
     
     def _extract_real_phone_number(self, from_number):
-        """Extrae el número real de teléfono desde el ID de WhatsApp"""
+        """Extrae el número real de teléfono desde el ID de WhatsApp (INTERNACIONAL)"""
+        from ..utils.international_phone import formatear_numero_internacional, limpiar_numero
         import re
         
-        # Limpiar el número
+        # Limpiar el número de sufijos de WhatsApp
         clean_number = from_number.replace('@s.whatsapp.net', '').replace('@lid', '').replace('@c.us', '').replace('@g.us', '')
         
-        # Si ya viene formateado desde el bridge (ej: +57 300 734 1192)
-        if clean_number.startswith('+57 '):
-            return clean_number
+        # Si ya viene formateado desde el bridge (ej: +52 55 1234 5678)
+        if clean_number.startswith('+'):
+            # Validar que sea un formato internacional válido
+            formatted = formatear_numero_internacional(clean_number)
+            if formatted:
+                return formatted
         
-        # Si es un número colombiano directo (ej: 573007341192)
-        if clean_number.startswith('57') and len(clean_number) == 12:
-            return f"+57 {clean_number[2:5]} {clean_number[5:8]} {clean_number[8:]}"
+        # Intentar formatear como número internacional directo
+        formatted = formatear_numero_internacional(clean_number)
+        if formatted:
+            return formatted
         
-        # Si es un número de 10 dígitos (agregar código de país colombiano)
-        if len(clean_number) == 10 and clean_number.isdigit():
-            return f"+57 {clean_number[0:3]} {clean_number[3:6]} {clean_number[6:]}"
+        # RETROCOMPATIBILIDAD: Si es un número de 10 dígitos, asumir Colombia
+        clean_digits = limpiar_numero(clean_number)
+        if len(clean_digits) == 10 and clean_digits.isdigit() and clean_digits.startswith('3'):
+            colombia_number = '57' + clean_digits
+            formatted = formatear_numero_internacional(colombia_number)
+            if formatted:
+                return formatted
         
-        # Buscar patrones de números colombianos dentro de IDs únicos
+        # Buscar patrones de números dentro de IDs complejos
+        # Buscar cualquier secuencia de 10-15 dígitos que pueda ser un número válido
+        number_matches = re.findall(r'(\d{10,15})', clean_number)
+        for match in number_matches:
+            formatted = formatear_numero_internacional(match)
+            if formatted:
+                return formatted
+        
+        # Buscar números colombianos específicamente (retrocompatibilidad)
         colombian_match = re.search(r'57(\d{10})', clean_number)
         if colombian_match:
             full_number = '57' + colombian_match.group(1)
-            return f"+57 {full_number[2:5]} {full_number[5:8]} {full_number[8:]}"
+            formatted = formatear_numero_internacional(full_number)
+            if formatted:
+                return formatted
         
-        # Buscar números colombianos en formato especial (móviles que empiezan con 3)
+        # Buscar móviles colombianos (retrocompatibilidad)
         mobile_match = re.search(r'(3\d{9})', clean_number)
         if mobile_match:
-            mobile_number = mobile_match.group(1)
-            return f"+57 {mobile_number[0:3]} {mobile_number[3:6]} {mobile_number[6:]}"
+            colombia_mobile = '57' + mobile_match.group(1)
+            formatted = formatear_numero_internacional(colombia_mobile)
+            if formatted:
+                return formatted
         
         # Si no se puede extraer un número válido, devolver None
         return None
@@ -502,55 +523,57 @@ class WhatsAppService:
     
     def _normalize_phone_for_bridge(self, value: str) -> str:
         """
-        REINGENIERÍA: Solo números colombianos válidos
-        - Acepta: "+57 300 123 4567", "573001234567"  
-        - Devuelve: "573001234567" (formato para bridge)
-        - RECHAZA: WA-IDs, números no colombianos
+        Normalizar números de teléfono INTERNACIONALES para el bridge
+        ACEPTA cualquier número internacional válido
         """
+        from ..utils.international_phone import limpiar_numero, formatear_numero_internacional, obtener_numero_para_whatsapp
+        
         try:
-            if not value:
-                raise ValueError("Número vacío")
-                
+            print(f"🌍 Normalizando número internacional: {value}")
             v = str(value).strip()
             
-            # Si viene un JID, devolver tal cual
-            if '@' in v:
-                return v
+            # Intentar formatear como número internacional
+            formatted = formatear_numero_internacional(v)
+            if formatted:
+                clean_digits = obtener_numero_para_whatsapp(formatted)
+                print(f"✅ Número internacional válido: {formatted} -> {clean_digits}")
+                return clean_digits
             
-            # RECHAZAR WA-IDs completamente
-            if v.startswith('WA-'):
-                raise ValueError(f"WA-ID no permitido: {v}")
+            # RETROCOMPATIBILIDAD: Si es un celular colombiano de 10 dígitos
+            digits = limpiar_numero(v)
+            if len(digits) == 10 and digits.startswith('3'):
+                colombia_number = f"57{digits}"
+                formatted = formatear_numero_internacional(colombia_number)
+                if formatted:
+                    print(f"✅ Número colombiano (retrocompatibilidad): {formatted}")
+                    return colombia_number
             
-            # Extraer solo dígitos
-            digits = ''.join(ch for ch in v if ch.isdigit())
-            if not digits:
-                raise ValueError(f"No hay dígitos válidos en: {v}")
-                
-            # Validar que sea número colombiano (57 + 10 dígitos)
-            if digits.startswith('57') and len(digits) == 12:
+            # Si no se puede formatear, intentar usar directamente si parece válido
+            if len(digits) >= 10 and len(digits) <= 15:
+                print(f"⚠️  Número no reconocido, usando formato directo: {digits}")
                 return digits
                 
-            # Si es un celular colombiano de 10 dígitos, agregar código de país
-            if len(digits) == 10 and digits.startswith('3'):
-                return f"57{digits}"
-                
-            # RECHAZAR cualquier otro formato
-            raise ValueError(f"Solo números colombianos permitidos: {v}")
+            raise ValueError(f"Número no válido o muy corto: {v}")
             
         except Exception as e:
             print(f"❌ Error normalizando número {value}: {e}")
-            raise e  # Propagar error para que el mensaje falle
+            raise e
 
     def _get_or_create_unified_contact(self, clean_from_number, real_phone_number):
         """
-        REINGENIERÍA COMPLETA: Solo usar números reales de teléfono
+        SISTEMA UNIFICADO INTERNACIONAL: Manejo de contactos de cualquier país
         NO más WA-IDs, NO más duplicaciones
         """
+        from ..utils.international_phone import obtener_info_pais
         
-        # REGLA 1: Solo aceptar números reales formateados
+        # REGLA 1: Solo aceptar números reales formateados internacionales
         if not real_phone_number or not real_phone_number.startswith('+'):
             print(f"❌ RECHAZADO: No hay número real válido para {clean_from_number}")
             raise ValueError(f"Número no válido: {clean_from_number}")
+        
+        # Obtener información del país
+        country_info = obtener_info_pais(real_phone_number)
+        country_name = country_info['name'] if country_info else 'Desconocido'
         
         # REGLA 2: Buscar ÚNICAMENTE por número real
         existing_contact = Contact.objects.filter(
@@ -559,22 +582,23 @@ class WhatsAppService:
         ).first()
         
         if existing_contact:
-            print(f"✅ Contacto existente encontrado: ID={existing_contact.id}, phone={existing_contact.phone}")
-            # Asegurar que platform_user_id sea consistente (sin formato de WA)
-            if existing_contact.platform_user_id != clean_from_number and not existing_contact.platform_user_id.startswith('WA-'):
+            print(f"✅ Contacto {country_name} existente encontrado: ID={existing_contact.id}, phone={existing_contact.phone}")
+            # Asegurar que platform_user_id sea consistente
+            if existing_contact.platform_user_id != clean_from_number:
                 existing_contact.platform_user_id = clean_from_number
                 existing_contact.save()
             return existing_contact
         
-        # REGLA 3: Crear nuevo contacto SOLO con número real
+        # REGLA 3: Crear nuevo contacto internacional
         contact = Contact.objects.create(
             platform=self.platform,
             platform_user_id=clean_from_number,  # JID limpio sin @
-            name=real_phone_number,
-            phone=real_phone_number
+            name=real_phone_number,  # Usar número formateado como nombre inicial
+            phone=real_phone_number,
+            country=country_name  # Agregar país detectado
         )
         
-        print(f"✅ Nuevo contacto creado: ID={contact.id}, platform_user_id={contact.platform_user_id}, phone={contact.phone}")
+        print(f"✅ Nuevo contacto {country_name} creado: ID={contact.id}, phone={contact.phone}")
         return contact
     
     def _merge_duplicate_conversations(self, main_contact):
