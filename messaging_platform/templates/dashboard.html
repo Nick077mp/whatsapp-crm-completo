@@ -325,7 +325,7 @@ function completeReminder(reminderId) {
 }
 
 function assignConversation(conversationId) {
-    if (!confirm('¿Deseas asignarte esta conversación?')) return;
+    if (!confirm('¿Deseas asignarte esta conversación y clasificarla automáticamente?')) return;
     
     // Mostrar indicador de carga
     const button = event.target;
@@ -333,6 +333,7 @@ function assignConversation(conversationId) {
     button.innerHTML = '⏳ Asignando...';
     button.disabled = true;
     
+    // Paso 1: Asignar la conversación al usuario actual
     fetch(`/api/conversations/${conversationId}/assign/`, {
         method: 'POST',
         headers: {
@@ -346,8 +347,41 @@ function assignConversation(conversationId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            button.innerHTML = '⏳ Clasificando...';
+            
+            // Paso 2: Clasificar automáticamente según el rol del usuario
+            const userRole = '{{ request.user.role }}'; // sales, support, admin
+            let funnelType = 'support'; // Por defecto soporte
+            
+            if (userRole === 'sales') {
+                funnelType = 'sales';
+            } else if (userRole === 'admin') {
+                // Para admin, preguntar qué tipo de embudo
+                const salesOption = confirm('¿Clasificar como VENTAS? (Cancelar para clasificar como SOPORTE)');
+                funnelType = salesOption ? 'sales' : 'support';
+            }
+            
+            // Clasificar en el embudo correspondiente
+            return fetch(`/api/conversations/${conversationId}/funnel/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    funnel_type: funnelType,
+                    funnel_stage: funnelType + '_initial'
+                })
+            });
+        } else {
+            throw new Error(data.error || 'No se pudo asignar la conversación');
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
             // Mostrar mensaje de éxito
-            button.innerHTML = '✅ Asignado';
+            button.innerHTML = '✅ Asignado y Clasificado';
             button.classList.remove('btn-success');
             button.classList.add('btn-primary');
             
@@ -356,13 +390,20 @@ function assignConversation(conversationId) {
                 location.reload();
             }, 1000);
         } else {
-            alert('Error: ' + (data.error || 'No se pudo asignar la conversación'));
-            button.innerHTML = originalContent;
-            button.disabled = false;
+            // La asignación funcionó, pero la clasificación no
+            button.innerHTML = '⚠️ Asignado (sin clasificar)';
+            button.classList.remove('btn-success');
+            button.classList.add('btn-warning');
+            
+            alert('Conversación asignada exitosamente, pero no se pudo clasificar automáticamente. Puedes hacerlo manualmente en la vista de embudos.');
+            
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
         }
     })
     .catch(error => {
-        alert('Error al asignar conversación');
+        alert('Error: ' + error.message);
         console.error(error);
         button.innerHTML = originalContent;
         button.disabled = false;

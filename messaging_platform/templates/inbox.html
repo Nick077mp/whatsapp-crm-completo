@@ -1206,128 +1206,57 @@ function displayInboxSearchResults(conversations, query) {
         return;
     }
     
-    // Cargar agentes disponibles primero
-    fetch('/api/agents/list/')
-    .then(response => response.json())
-    .then(agentData => {
-        let html = '';
-        conversations.forEach(conv => {
-            const statusBadge = !conv.is_answered ? 
-                '<span class="status-badge urgent">🔔 Sin Responder</span>' :
-                '<span class="status-badge responded">✅ Respondida</span>';
-            
-            const assignedInfo = conv.assigned_to_name ? 
-                `<div class="assigned-info">
-                    <small>👤 Asignado a: ${conv.assigned_to_name}</small>
-                </div>` : '';
+    // Generar HTML directamente - simplificado para evitar errores
+    let html = '';
+    conversations.forEach(conv => {
+        // Usar datos básicos disponibles de la API
+        const statusBadge = conv.needs_response ? 
+            '<span class="status-badge urgent">🔔 Sin Responder</span>' :
+            '<span class="status-badge responded">✅ Respondida</span>';
+        
+        const assignedInfo = conv.assigned_to ? 
+            `<div class="assigned-info">
+                <small>👤 Asignado a: ${conv.assigned_to}</small>
+            </div>` : '';
 
-            // Generar opciones de agentes
-            let agentOptions = `<option value="">${conv.assigned_to_name || 'Seleccionar Agente'}</option>`;
-            if (agentData.success) {
-                agentData.agents.forEach(agent => {
-                    const selected = conv.assigned_to_name && conv.assigned_to_name === agent.username ? 'selected' : '';
-                    agentOptions += `<option value="${agent.id}" ${selected}>${agent.display_name}</option>`;
-                });
-            }
+        const platform = conv.platform || 'unknown';
+        const contactName = conv.contact_name || 'Sin nombre';
+        const contactPhone = conv.contact_phone || conv.platform_user_id || '';
+        const lastMessageTime = conv.last_message_at || '';
 
-            html += `
-                <div class="conversation-card" data-conversation-id="${conv.id}">
-                    <div class="conversation-header">
-                        <div class="contact-info">
-                            <strong class="contact-name">${conv.contact_name}</strong>
-                            <small class="platform-badge badge-${conv.platform}">${conv.platform}</small>
-                        </div>
-                        <div class="conversation-status">
-                            ${statusBadge}
-                        </div>
+        html += `
+            <div class="conversation-card" data-conversation-id="${conv.id}">
+                <div class="conversation-header">
+                    <div class="contact-info">
+                        <strong class="contact-name">${contactName}</strong>
+                        <small class="platform-badge badge-${platform}">${platform.toUpperCase()}</small>
+                        ${contactPhone ? `<small class="contact-phone">${contactPhone}</small>` : ''}
                     </div>
-                    
-                    <div class="conversation-body">
-                        <div class="last-message">
-                            <p>${conv.last_message_preview || 'Sin mensajes'}</p>
-                            <small class="message-time">${conv.last_message_at}</small>
-                        </div>
-                        ${assignedInfo}
+                    <div class="conversation-status">
+                        ${statusBadge}
+                    </div>
+                </div>
+                
+                <div class="conversation-body">
+                    <div class="last-message">
+                        <small class="message-time">Última actividad: ${lastMessageTime}</small>
+                    </div>
+                    ${assignedInfo}
                     </div>
                     
                     <div class="conversation-actions">
-                        <div class="agent-assignment">
-                            <select class="agent-selector" id="agentSelector_${conv.id}" 
-                                    onchange="assignAgent(${conv.id}, this.value)">
-                                ${agentOptions}
-                            </select>
-                            <button class="btn-assign-agent" onclick="showAgentModal(${conv.id})">
-                                👤 Agente
-                            </button>
-                        </div>
-                        
-                        <div class="classification-buttons" id="classificationButtons_${conv.id}">
-                            <button class="btn-classify btn-sales btn-compact ${conv.assigned_to_name ? '' : 'disabled'}" 
-                                    onclick="classifyConversation(${conv.id}, 'sales')"
-                                    ${conv.assigned_to_name ? '' : 'disabled title="Primero selecciona un agente"'}>
-                                💰 Ventas
-                            </button>
-                            <button class="btn-classify btn-support btn-compact ${conv.assigned_to_name ? '' : 'disabled'}" 
-                                    onclick="classifyConversation(${conv.id}, 'support')"
-                                    ${conv.assigned_to_name ? '' : 'disabled title="Primero selecciona un agente"'}>
-                                🔧 Soporte
-                            </button>
-                            <button class="btn-classify btn-recovery btn-compact ${conv.assigned_to_name ? '' : 'disabled'}" 
-                                    onclick="showRecoveryModalForConversation(${conv.id})"
-                                    ${conv.assigned_to_name ? '' : 'disabled title="Primero selecciona un agente"'}>
-                                🔄 Recuperación
-                            </button>
-                        </div>
-                        
+                        <button class="btn btn-success btn-compact" onclick="assignConversation(${conv.id})">
+                            � Asignarme
+                        </button>
                         <button class="btn-secondary btn-view-chat btn-compact" onclick="viewConversation(${conv.id})">
                             💬 Ver Chat
                         </button>
                     </div>
                 </div>
             `;
-        });
-        
-        conversationsGrid.innerHTML = html;
-    })
-    .catch(error => {
-        console.error('Error cargando agentes:', error);
-        // Mostrar resultados sin agentes si hay error
-        let html = '';
-        conversations.forEach(conv => {
-            const statusBadge = !conv.is_answered ? 
-                '<span class="status-badge urgent">🔔 Sin Responder</span>' :
-                '<span class="status-badge responded">✅ Respondida</span>';
-
-            html += `
-                <div class="conversation-card" data-conversation-id="${conv.id}">
-                    <div class="conversation-header">
-                        <div class="contact-info">
-                            <strong class="contact-name">${conv.contact_name}</strong>
-                            <small class="platform-badge badge-${conv.platform}">${conv.platform}</small>
-                        </div>
-                        <div class="conversation-status">
-                            ${statusBadge}
-                        </div>
-                    </div>
-                    
-                    <div class="conversation-body">
-                        <div class="last-message">
-                            <p>${conv.last_message_preview || 'Sin mensajes'}</p>
-                            <small class="message-time">${conv.last_message_at}</small>
-                        </div>
-                    </div>
-                    
-                    <div class="conversation-actions">
-                        <button class="btn-secondary btn-view-chat btn-compact" onclick="viewConversation(${conv.id})">
-                            💬 Ver Chat
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-        
-        conversationsGrid.innerHTML = html;
     });
+    
+    conversationsGrid.innerHTML = html;
 }
 
 function showInboxSearchError() {

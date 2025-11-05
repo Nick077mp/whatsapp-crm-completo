@@ -100,10 +100,10 @@ def dashboard_view(request):
         total_conversations = base_conversations.count()
         unanswered_conversations = base_conversations.filter(needs_response=True).count()
         
-        # Conversaciones recientes - ordenadas por necesidad de respuesta
+        # Conversaciones recientes - ordenadas por necesidad de respuesta - SIN LÍMITE ESTRICTO
         recent_conversations = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
-        ).order_by('-needs_response', '-last_message_at')[:20]
+        ).order_by('-needs_response', '-last_message_at')[:50]  # Aumentado de 20 a 50
         
         # Para compatibilidad con template
         assigned_conversations = []
@@ -117,27 +117,27 @@ def dashboard_view(request):
         total_conversations = base_conversations.count()
         unanswered_conversations = base_conversations.filter(needs_response=True).count()
         
-        # Conversaciones asignadas a este usuario
+        # Conversaciones asignadas a este usuario - SIN LÍMITE
         assigned_conversations = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
         ).filter(assigned_to=request.user).order_by(
             '-needs_response', '-last_message_at'
-        )[:15]
+        )  # Removido [:15] para mostrar todas
         
         # Conversaciones disponibles (sin asignar) de su departamento
         available_conversations_queryset = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
         ).filter(assigned_to__isnull=True)
         
-        # Conversaciones disponibles para mostrar
+        # Conversaciones disponibles para mostrar - SIN LÍMITE  
         unassigned_conversations = available_conversations_queryset.order_by(
             '-needs_response', '-last_message_at'
-        )[:15]
+        )  # Removido [:15] para mostrar todas las disponibles
         
-        # Conversaciones recientes: combinar asignadas y sin asignar del departamento
+        # Conversaciones recientes: combinar asignadas y sin asignar del departamento - SIN LÍMITE ESTRICTO
         recent_conversations = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
-        ).order_by('-needs_response', '-last_message_at')[:20]
+        ).order_by('-needs_response', '-last_message_at')[:100]  # Aumentado de 20 a 100
         
         # Conteo de conversaciones disponibles
         available_count = available_conversations_queryset.count()
@@ -1623,16 +1623,9 @@ def api_send_file_message(request):
         
         message_type = message_type_map.get(file_type, 'text')
         
-        # Generar platform_message_id único
-        import uuid
-        platform_message_id = f"file_upload_{uuid.uuid4().hex[:12]}_{int(timezone.now().timestamp())}"
-        
-        print(f"🆔 Generando platform_message_id único: {platform_message_id}")
-        
         # Crear mensaje en la base de datos
         message = Message.objects.create(
             conversation=conversation,
-            platform_message_id=platform_message_id,
             sender_type='agent',
             sender_user=request.user,
             content=message_text or f"{file_type.title()} enviado: {uploaded_file.name}",
@@ -1653,67 +1646,6 @@ def api_send_file_message(request):
             action='send_file',
             description=f'Archivo enviado: {uploaded_file.name} ({file_type})'
         )
-        
-        print(f"✅ Mensaje con archivo creado exitosamente - ID: {message.id}")
-        print(f"📎 Archivo guardado en: {file_url}")
-        print(f"🎯 Tipo de archivo: {file_type}")
-        print(f"👤 Destinatario: {conversation.contact.platform_user_id}")
-        
-        # **CRÍTICO**: Enviar archivo al WhatsApp Bridge
-        try:
-            import requests
-            
-            # URL completa del archivo para WhatsApp
-            full_file_url = request.build_absolute_uri(file_url)
-            print(f"🌐 URL completa del archivo: {full_file_url}")
-            
-            # Determinar el destinatario correcto para WhatsApp
-            # Si platform_user_id ya es un JID, usarlo tal cual
-            to_recipient = conversation.contact.platform_user_id
-            if '@' not in to_recipient:
-                # Es un número, necesitamos convertirlo a JID
-                # Limpiar y normalizar el número
-                clean_number = ''.join(filter(str.isdigit, to_recipient))
-                if clean_number:
-                    to_recipient = f"{clean_number}@s.whatsapp.net"
-                    print(f"📞 Número convertido a JID: {conversation.contact.platform_user_id} → {to_recipient}")
-            
-            # Preparar datos para WhatsApp Bridge  
-            whatsapp_data = {
-                'to': to_recipient,
-                'message': message_text or " ",  # Espacio mínimo para pasar validación
-                'type': message_type,
-                'media_url': full_file_url,
-                'filename': uploaded_file.name
-            }
-            
-            print(f"📤 Enviando a WhatsApp Bridge: {whatsapp_data}")
-            
-            # Enviar al bridge de WhatsApp
-            bridge_response = requests.post(
-                'http://localhost:3000/send-message',
-                json=whatsapp_data,
-                timeout=10
-            )
-            
-            if bridge_response.status_code == 200:
-                bridge_result = bridge_response.json()
-                print(f"✅ WhatsApp Bridge response: {bridge_result}")
-                
-                # Actualizar mensaje con ID de WhatsApp si está disponible
-                if bridge_result.get('message_id'):
-                    message.platform_message_id = bridge_result['message_id']
-                    message.save()
-                    print(f"🆔 Platform message ID actualizado: {bridge_result['message_id']}")
-                    
-            else:
-                print(f"⚠️ WhatsApp Bridge error: {bridge_response.status_code} - {bridge_response.text}")
-                
-        except requests.exceptions.RequestException as bridge_error:
-            print(f"❌ Error conectando con WhatsApp Bridge: {str(bridge_error)}")
-            # No fallar la operación completa si el bridge falla
-        except Exception as bridge_error:
-            print(f"❌ Error inesperado en WhatsApp Bridge: {str(bridge_error)}")
         
         return JsonResponse({
             'success': True,
@@ -1881,43 +1813,4 @@ def upload_media_view(request):
             'success': False,
             'error': f'Error subiendo archivo: {str(e)}'
         }, status=500)
-
-
-@csrf_exempt
-def api_mexican_contacts(request):
-    """
-    🇲🇽 SOLUCIÓN ROBUSTA: Endpoint para sincronizar contactos mexicanos con el bridge
-    """
-    if request.method == 'GET':
-        try:
-            # Buscar todos los contactos mexicanos
-            whatsapp_platform = Platform.objects.get(name='whatsapp')
-            mexican_contacts = Contact.objects.filter(
-                platform=whatsapp_platform,
-                phone__startswith='+52'
-            ).values('id', 'phone', 'platform_user_id', 'name')
-            
-            contacts_list = list(mexican_contacts)
-            
-            return JsonResponse({
-                'success': True,
-                'contacts': contacts_list,
-                'count': len(contacts_list)
-            })
-            
-        except Platform.DoesNotExist:
-            return JsonResponse({
-                'success': False,
-                'error': 'Plataforma WhatsApp no encontrada'
-            }, status=404)
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': f'Error obteniendo contactos mexicanos: {str(e)}'
-            }, status=500)
-    
-    return JsonResponse({
-        'success': False,
-        'error': 'Método no permitido'
-    }, status=405)
 
