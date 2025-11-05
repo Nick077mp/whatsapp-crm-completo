@@ -1401,13 +1401,18 @@ def api_get_available_agents(request):
 
 @login_required
 def api_search_conversations(request):
-    """API para búsqueda de conversaciones en tiempo real"""
+    """API para búsqueda de conversaciones en tiempo real - Unificada para chat e inbox"""
     try:
         search_query = request.GET.get('q', '').strip()
+        unassigned_only = request.GET.get('unassigned_only', 'false').lower() == 'true'
         
         conversations = Conversation.objects.select_related(
             'contact', 'contact__platform', 'assigned_to'
         ).filter(status='active')
+        
+        # Si es para inbox, filtrar solo conversaciones sin asignar a usuario
+        if unassigned_only:
+            conversations = conversations.filter(assigned_to__isnull=True)
         
         if search_query:
             # Limpiar el número de búsqueda (quitar espacios, guiones, paréntesis, etc.)
@@ -1450,7 +1455,7 @@ def api_search_conversations(request):
         
         results = []
         for conv in conversations:
-            results.append({
+            conv_data = {
                 'id': conv.id,
                 'contact_name': conv.contact.display_name,
                 'contact_phone': conv.contact.phone or '',
@@ -1459,7 +1464,17 @@ def api_search_conversations(request):
                 'is_answered': conv.is_answered,
                 'whatsapp_number': conv.contact.whatsapp_number if conv.contact.platform.name == 'whatsapp' else None,
                 'platform_user_id': conv.contact.platform_user_id
-            })
+            }
+            
+            # Para inbox, agregar información adicional
+            if unassigned_only:
+                conv_data.update({
+                    'needs_response': getattr(conv, 'needs_response', False),
+                    'assigned_to': conv.assigned_to.username if conv.assigned_to else None,
+                    'funnel_type': conv.funnel_type or 'none'
+                })
+                
+            results.append(conv_data)
         
         return JsonResponse({
             'success': True,

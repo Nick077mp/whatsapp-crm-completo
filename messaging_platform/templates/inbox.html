@@ -1162,35 +1162,39 @@ let originalInboxContent = '';
 let searchInboxTimeout;
 let currentInboxSearchQuery = '';
 
-// Funciones de búsqueda en inbox
-function searchInboxConversations(query) {
-    console.log('Buscando:', query);
-    if (query.length < 2) {
-        console.log('Query muy corto, limpiando resultados');
-        displayInboxSearchResults([], query);
+// Funciones de búsqueda en inbox - IDÉNTICA A CHAT
+function performInboxSearch(query) {
+    const clearBtn = document.getElementById('clearInboxBtn');
+    const conversationsGrid = document.getElementById('conversations-grid');
+    
+    // Mostrar/ocultar botón de limpiar
+    if (query.length > 0) {
+        clearBtn.style.display = 'block';
+    } else {
+        clearBtn.style.display = 'none';
+        // Restaurar conversaciones originales si no hay búsqueda
+        conversationsGrid.innerHTML = originalInboxContent;
         return;
     }
-
-    console.log('Llamando a API:', `/api/search_unassigned/?q=${encodeURIComponent(query)}`);
-    fetch(`/api/search_unassigned/?q=${encodeURIComponent(query)}`)
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.json();
-    })
-    .then(data => {
-        console.log('Response data:', data);
-        if (data.success) {
-            console.log('Conversations found:', data.conversations.length);
-            displayInboxSearchResults(data.conversations, query);
-        } else {
-            console.log('Error in response:', data);
+    
+    // Usar el mismo endpoint que chat con filtro para inbox
+    fetch(`/api/conversations/search/?q=${encodeURIComponent(query)}&unassigned_only=true`)
+        .then(response => response.json())
+        .then(data => {
+            clearBtn.style.display = query.length > 0 ? 'block' : 'none';
+            
+            if (data.success) {
+                displayInboxSearchResults(data.conversations, query);
+            } else {
+                console.error('Error en búsqueda:', data.error);
+                showInboxSearchError();
+            }
+        })
+        .catch(error => {
+            console.error('Error en búsqueda:', error);
+            clearBtn.style.display = query.length > 0 ? 'block' : 'none';
             showInboxSearchError();
-        }
-    })
-    .catch(error => {
-        console.error('Fetch error:', error);
-        showInboxSearchError();
-    });
+        });
 }
 
 function displayInboxSearchResults(conversations, query) {
@@ -1209,19 +1213,21 @@ function displayInboxSearchResults(conversations, query) {
     // Generar HTML directamente - simplificado para evitar errores
     let html = '';
     conversations.forEach(conv => {
-        // Usar datos básicos disponibles de la API
-        const statusBadge = conv.needs_response ? 
+        // Determinar estado de respuesta (usar is_answered del API unificado)
+        const statusBadge = !conv.is_answered ? 
             '<span class="status-badge urgent">🔔 Sin Responder</span>' :
             '<span class="status-badge responded">✅ Respondida</span>';
         
+        // Información de agente asignado
         const assignedInfo = conv.assigned_to ? 
             `<div class="assigned-info">
                 <small>👤 Asignado a: ${conv.assigned_to}</small>
             </div>` : '';
 
-        const platform = conv.platform || 'unknown';
+        // Datos del contacto
+        const platform = conv.platform || 'whatsapp';
         const contactName = conv.contact_name || 'Sin nombre';
-        const contactPhone = conv.contact_phone || conv.platform_user_id || '';
+        const contactPhone = conv.contact_phone || '';
         const lastMessageTime = conv.last_message_at || '';
 
         html += `
@@ -1257,6 +1263,9 @@ function displayInboxSearchResults(conversations, query) {
     });
     
     conversationsGrid.innerHTML = html;
+    
+    // Cargar agentes para los selectores después de crear el HTML
+    loadAgentsForSelectors(conversations);
 }
 
 function showInboxSearchError() {
@@ -1274,45 +1283,49 @@ function clearInboxSearch() {
     const conversationsGrid = document.getElementById('conversations-grid');
     const clearBtn = document.getElementById('clearInboxBtn');
     
+    // Limpiar input y ocultar botón
     searchInput.value = '';
     clearBtn.style.display = 'none';
+    
+    // Restaurar contenido original
     conversationsGrid.innerHTML = originalInboxContent;
     currentInboxSearchQuery = '';
     
+    // Enfocar input para continuar escribiendo
     searchInput.focus();
 }
 
-// Configurar búsqueda en tiempo real para inbox
+// Configurar búsqueda en tiempo real para inbox - IDÉNTICA A CHAT
 document.addEventListener('DOMContentLoaded', function() {
     const conversationsGrid = document.getElementById('conversations-grid');
     originalInboxContent = conversationsGrid.innerHTML;
     
     const searchInput = document.getElementById('searchInbox');
-    const clearBtn = document.getElementById('clearInboxBtn');
     
     searchInput.addEventListener('input', function(e) {
         const query = e.target.value.trim();
         currentInboxSearchQuery = query;
-        
-        if (query.length > 0) {
-            clearBtn.style.display = 'block';
-        } else {
-            clearBtn.style.display = 'none';
-            conversationsGrid.innerHTML = originalInboxContent;
-            return;
-        }
         
         // Limpiar timeout anterior
         clearTimeout(searchInboxTimeout);
         
         // Buscar después de 300ms de inactividad
         searchInboxTimeout = setTimeout(() => {
-            if (currentInboxSearchQuery === query) {
-                searchInboxConversations(query);
+            if (currentInboxSearchQuery === query) {  // Solo buscar si el query no ha cambiado
+                performInboxSearch(query);
             }
         }, 300);
     });
     
+    // Búsqueda inmediata al presionar Enter
+    searchInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            clearTimeout(searchInboxTimeout);
+            performInboxSearch(e.target.value.trim());
+        }
+    });
+    
+    // Limpiar búsqueda con Escape
     searchInput.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             clearInboxSearch();
@@ -1362,6 +1375,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 <button type="button" class="btn btn-outline" onclick="closeRecoveryModalInbox()">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Crear Caso de Recuperación</button>
             </div>
+
+<!-- Función auxiliar para cargar agentes en resultados de búsqueda -->
+<script>
+function loadAgentsForSelectors(conversations) {
+    // Esta función carga los agentes para todos los selectores en los resultados de búsqueda
+    conversations.forEach(conv => {
+        const selector = document.getElementById(`agentSelector_${conv.id}`);
+        if (selector && window.availableAgents) {
+            // Limpiar opciones existentes excepto la primera
+            selector.innerHTML = '<option value="">Seleccionar Agente</option>';
+            
+            // Agregar agentes disponibles
+            window.availableAgents.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent.id;
+                option.textContent = `${agent.first_name} ${agent.last_name}`;
+                if (conv.assigned_to && conv.assigned_to_id === agent.id) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        }
+    });
+}
+</script>
         </form>
     </div>
 </div>
