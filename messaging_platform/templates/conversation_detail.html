@@ -176,6 +176,30 @@
     align-items: center;
     gap: 0.5rem;
 }
+
+/* Estilos para mejorar la visibilidad de timestamps y info de mensajes */
+.message-header small,
+.message-info small,
+.message-timestamp {
+    color: #555555 !important; /* Color más oscuro y visible */
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.message-sent .message-header small,
+.message-sent .message-info small {
+    color: #444444 !important; /* Aún más oscuro para mensajes enviados */
+}
+
+.message-received .message-header small,
+.message-received .message-info small {
+    color: #666666 !important; /* Color visible para mensajes recibidos */
+}
+
+/* Asegurar que el texto no sea muted en los mensajes */
+.message .text-muted {
+    color: #555555 !important;
+}
 </style>
 {% endblock %}
 
@@ -199,7 +223,7 @@
         <div class="message {% if message.sender_type == 'agent' %}message-sent{% else %}message-received{% endif %}">
             <div class="message-header">
                 <strong>{{ message.sender_name }}</strong>
-                <small>{{ message.created_at|date:"d/m/Y H:i" }}</small>
+                <small class="message-timestamp">{{ message.created_at|date:"d/m/Y, H:i" }}</small>
             </div>
             <div class="message-content">
                 {{ message.content }}
@@ -392,6 +416,197 @@ function openTemplatesModal() {
     window.open('/templates/', '_blank');
 }
 
+// Sistema de auto-refresh para mensajes
+let chatAutoRefreshEnabled = true;
+let chatAutoRefreshInterval = null;
+let chatLastMessageCount = {{ messages|length }};
+
+function checkForNewMessages() {
+    if (!chatAutoRefreshEnabled) {
+        console.log('⏸️ Auto-refresh pausado, omitiendo verificación');
+        return;
+    }
+    
+    console.log(`🔍 Verificando nuevos mensajes... (actual: ${chatLastMessageCount})`);
+    
+    fetch(`/api/conversations/${conversationId}/messages/`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+            'X-CSRFToken': getCSRFToken()
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`📊 Respuesta API: ${data.messages.length} mensajes`);
+            if (data.messages.length > chatLastMessageCount) {
+                console.log(`🔄 ¡${data.messages.length - chatLastMessageCount} nuevos mensajes detectados!`);
+                // Solo agregar los mensajes nuevos
+                const newMessages = data.messages.slice(chatLastMessageCount);
+                appendNewMessages(newMessages);
+                chatLastMessageCount = data.messages.length;
+                
+                // Actualizar estado de conversación si es necesario
+                updateConversationStatus(data.conversation_status);
+            } else {
+                console.log('✅ No hay mensajes nuevos');
+            }
+        } else {
+            console.error('❌ Error en respuesta API:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error checking messages:', error);
+    });
+}
+
+function appendNewMessages(newMessages) {
+    const messagesContainer = document.getElementById('messagesContainer');
+    const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight <= messagesContainer.scrollTop + 1;
+    
+    // Agregar solo los mensajes nuevos
+    newMessages.forEach(message => {
+        const messageElement = createMessageElement(message);
+        messagesContainer.appendChild(messageElement);
+    });
+    
+    // Hacer scroll automático si el usuario estaba en el bottom
+    if (wasAtBottom) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // Actualizar tiempo de respuesta solo si hay mensajes nuevos
+    if (newMessages.length > 0) {
+        initResponseTimeMonitoring();
+    }
+}
+
+function updateConversationStatus(status) {
+    // Actualizar elementos de la UI basados en el estado de la conversación
+    if (status) {
+        console.log('Estado de conversación actualizado:', status);
+        // Aquí podrías actualizar badges o indicadores visuales si los tienes
+    }
+}
+
+// Función de respaldo para recargar todos los mensajes (por si acaso)
+function updateMessagesDisplay(messages) {
+    const messagesContainer = document.getElementById('messagesContainer');
+    const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight <= messagesContainer.scrollTop + 1;
+    
+    // Limpiar mensajes actuales
+    messagesContainer.innerHTML = '';
+    
+    // Agregar todos los mensajes
+    messages.forEach(message => {
+        const messageElement = createMessageElement(message);
+        messagesContainer.appendChild(messageElement);
+    });
+    
+    // Mantener scroll en el bottom si ya estaba allí
+    if (wasAtBottom) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // Actualizar tiempo de respuesta
+    initResponseTimeMonitoring();
+}
+
+function createMessageElement(message) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${message.sender_type === 'agent' ? 'message-sent' : 'message-received'}`;
+    
+    // Agregar información del remitente y timestamp
+    const timestamp = new Date(message.created_at).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).replace(/\//g, '/').replace(' ', ', ');
+    
+    // Crear contenido usando la misma estructura que el template original
+    let messageHTML = `
+        <div class="message-header">
+            <strong>${escapeHtml(message.sender_name)}</strong>
+            <small class="message-timestamp">${timestamp}</small>
+        </div>
+        <div class="message-content">
+            ${message.content ? escapeHtml(message.content) : ''}
+    `;
+    
+    // Agregar multimedia si existe, usando la misma estructura que el template
+    if (message.media_url) {
+        if (message.message_type === 'image') {
+            messageHTML += `
+                <div class="media-container">
+                    <img src="${message.media_url}" alt="Imagen" style="max-width: 200px; border-radius: 4px;">
+                </div>
+            `;
+        } else if (message.message_type === 'video') {
+            messageHTML += `
+                <div class="media-container">
+                    <video controls style="max-width: 200px;">
+                        <source src="${message.media_url}" type="video/mp4">
+                        Tu navegador no soporta la reproducción de video.
+                    </video>
+                </div>
+            `;
+        } else if (message.message_type === 'audio') {
+            messageHTML += `
+                <div class="media-container">
+                    <audio controls>
+                        <source src="${message.media_url}" type="audio/mpeg">
+                        Tu navegador no soporta la reproducción de audio.
+                    </audio>
+                </div>
+            `;
+        } else if (message.message_type === 'document') {
+            messageHTML += `
+                <div class="media-container">
+                    <a href="${message.media_url}" target="_blank" class="btn btn-outline">
+                        📄 Abrir documento
+                    </a>
+                </div>
+            `;
+        }
+    }
+    
+    messageHTML += `</div>`; // Cerrar message-content
+    
+    messageDiv.innerHTML = messageHTML;
+    return messageDiv;
+}
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+function startChatAutoRefresh() {
+    if (chatAutoRefreshInterval) {
+        clearInterval(chatAutoRefreshInterval);
+    }
+    chatAutoRefreshInterval = setInterval(checkForNewMessages, 3000); // Cada 3 segundos
+    console.log('✅ Chat auto-refresh activado - verificando cada 3 segundos');
+    console.log(`📊 Conteo inicial de mensajes: ${chatLastMessageCount}`);
+}
+
+function stopChatAutoRefresh() {
+    if (chatAutoRefreshInterval) {
+        clearInterval(chatAutoRefreshInterval);
+        chatAutoRefreshInterval = null;
+        console.log('⏸️ Chat auto-refresh pausado');
+    }
+}
+
 // Funciones para manejo de archivos
 function openFileUpload() {
     document.getElementById('fileInput').click();
@@ -571,12 +786,48 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Inicializar monitoreo de tiempo de respuesta
     initResponseTimeMonitoring();
+    
+    // Inicializar auto-refresh del chat
+    startChatAutoRefresh();
+    
+    // Pausar auto-refresh cuando el usuario está escribiendo
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.addEventListener('focus', function() {
+            chatAutoRefreshEnabled = false;
+            console.log('⏸️ Chat auto-refresh pausado (usuario escribiendo)');
+        });
+        
+        messageInput.addEventListener('blur', function() {
+            // Reanudar después de un pequeño delay para evitar conflictos
+            setTimeout(() => {
+                chatAutoRefreshEnabled = true;
+                console.log('▶️ Chat auto-refresh reanudado');
+            }, 1000);
+        });
+        
+        // También pausar mientras se está escribiendo
+        messageInput.addEventListener('keydown', function() {
+            chatAutoRefreshEnabled = false;
+        });
+        
+        messageInput.addEventListener('keyup', function() {
+            // Reanudar después de 2 segundos de inactividad
+            clearTimeout(this.typingTimer);
+            this.typingTimer = setTimeout(() => {
+                chatAutoRefreshEnabled = true;
+            }, 2000);
+        });
+    }
 });
 
-// Limpiar interval al salir de la página
+// Limpiar intervals al salir de la página
 window.addEventListener('beforeunload', function() {
     if (responseTimeInterval) {
         clearInterval(responseTimeInterval);
+    }
+    if (chatAutoRefreshInterval) {
+        clearInterval(chatAutoRefreshInterval);
     }
 });
 </script>
