@@ -1623,9 +1623,16 @@ def api_send_file_message(request):
         
         message_type = message_type_map.get(file_type, 'text')
         
+        # Generar platform_message_id único
+        import uuid
+        platform_message_id = f"file_upload_{uuid.uuid4().hex[:12]}_{int(timezone.now().timestamp())}"
+        
+        print(f"🆔 Generando platform_message_id único: {platform_message_id}")
+        
         # Crear mensaje en la base de datos
         message = Message.objects.create(
             conversation=conversation,
+            platform_message_id=platform_message_id,
             sender_type='agent',
             sender_user=request.user,
             content=message_text or f"{file_type.title()} enviado: {uploaded_file.name}",
@@ -1646,6 +1653,56 @@ def api_send_file_message(request):
             action='send_file',
             description=f'Archivo enviado: {uploaded_file.name} ({file_type})'
         )
+        
+        print(f"✅ Mensaje con archivo creado exitosamente - ID: {message.id}")
+        print(f"📎 Archivo guardado en: {file_url}")
+        print(f"🎯 Tipo de archivo: {file_type}")
+        print(f"👤 Destinatario: {conversation.contact.platform_user_id}")
+        
+        # **CRÍTICO**: Enviar archivo al WhatsApp Bridge
+        try:
+            import requests
+            
+            # URL completa del archivo para WhatsApp
+            full_file_url = request.build_absolute_uri(file_url)
+            print(f"🌐 URL completa del archivo: {full_file_url}")
+            
+            # Preparar datos para WhatsApp Bridge  
+            whatsapp_data = {
+                'to': conversation.contact.platform_user_id,
+                'message': message_text or " ",  # Espacio mínimo para pasar validación
+                'type': message_type,
+                'media_url': full_file_url,
+                'filename': uploaded_file.name
+            }
+            
+            print(f"📤 Enviando a WhatsApp Bridge: {whatsapp_data}")
+            
+            # Enviar al bridge de WhatsApp
+            bridge_response = requests.post(
+                'http://localhost:3000/send-message',
+                json=whatsapp_data,
+                timeout=10
+            )
+            
+            if bridge_response.status_code == 200:
+                bridge_result = bridge_response.json()
+                print(f"✅ WhatsApp Bridge response: {bridge_result}")
+                
+                # Actualizar mensaje con ID de WhatsApp si está disponible
+                if bridge_result.get('message_id'):
+                    message.platform_message_id = bridge_result['message_id']
+                    message.save()
+                    print(f"🆔 Platform message ID actualizado: {bridge_result['message_id']}")
+                    
+            else:
+                print(f"⚠️ WhatsApp Bridge error: {bridge_response.status_code} - {bridge_response.text}")
+                
+        except requests.exceptions.RequestException as bridge_error:
+            print(f"❌ Error conectando con WhatsApp Bridge: {str(bridge_error)}")
+            # No fallar la operación completa si el bridge falla
+        except Exception as bridge_error:
+            print(f"❌ Error inesperado en WhatsApp Bridge: {str(bridge_error)}")
         
         return JsonResponse({
             'success': True,

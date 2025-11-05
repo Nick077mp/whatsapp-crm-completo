@@ -292,6 +292,35 @@ function getCookie(name) {
     return cookieValue;
 }
 
+// Función robusta para obtener CSRF token de múltiples fuentes
+function getCSRFToken() {
+    // 1. Intentar desde cookie
+    let token = getCookie('csrftoken');
+    if (token) {
+        console.log('🔑 CSRF token encontrado en cookie:', token.substring(0, 10) + '...');
+        return token;
+    }
+    
+    // 2. Intentar desde meta tag
+    const metaTag = document.querySelector('meta[name="csrf-token"]');
+    if (metaTag) {
+        token = metaTag.getAttribute('content');
+        console.log('🔑 CSRF token encontrado en meta tag:', token.substring(0, 10) + '...');
+        return token;
+    }
+    
+    // 3. Intentar desde input hidden
+    const hiddenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (hiddenInput) {
+        token = hiddenInput.value;
+        console.log('🔑 CSRF token encontrado en input hidden:', token.substring(0, 10) + '...');
+        return token;
+    }
+    
+    console.error('❌ No se pudo encontrar CSRF token en ninguna fuente');
+    return null;
+}
+
 function sendMessage() {
     const input = document.getElementById('messageInput');
     const sendButton = document.getElementById('sendBtn');
@@ -382,11 +411,33 @@ function handleFileSelect(event) {
 }
 
 function uploadFile(file) {
+    // Detectar tipo de archivo automáticamente
+    function detectFileType(filename) {
+        const extension = filename.split('.').pop().toLowerCase();
+        const fileTypes = {
+            'image': ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+            'video': ['mp4', 'avi', 'mov', 'wmv', 'webm'],
+            'audio': ['mp3', 'wav', 'ogg', 'm4a', 'aac'],
+            'document': ['pdf', 'doc', 'docx', 'txt', 'xlsx', 'pptx']
+        };
+        
+        for (const [type, extensions] of Object.entries(fileTypes)) {
+            if (extensions.includes(extension)) {
+                return type;
+            }
+        }
+        return 'document'; // Tipo por defecto
+    }
+    
+    const fileType = detectFileType(file.name);
+    console.log(`📎 Detectado tipo de archivo: ${fileType} para ${file.name}`);
+    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('conversation_id', conversationId);
     formData.append('platform', platform);
     formData.append('recipient_id', recipientId);
+    formData.append('file_type', fileType);
     
     // Mostrar indicador de carga
     const sendButton = document.getElementById('sendBtn');
@@ -394,19 +445,33 @@ function uploadFile(file) {
     sendButton.disabled = true;
     sendButton.textContent = 'Enviando archivo...';
     
+    const csrfToken = getCSRFToken();
+    if (!csrfToken) {
+        alert('Error: No se pudo obtener token CSRF');
+        sendButton.disabled = false;
+        sendButton.textContent = originalText;
+        return;
+    }
+    
     fetch('/api/send-file-message/', {
         method: 'POST',
         headers: {
-            'X-CSRFToken': getCookie('csrftoken')
+            'X-CSRFToken': csrfToken
         },
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             // Limpiar input de archivo
             document.getElementById('fileInput').value = '';
             loadMessages(); // Recargar mensajes
+            console.log('✅ Archivo enviado exitosamente');
         } else {
             alert('Error al enviar archivo: ' + (data.error || 'Error desconocido'));
         }

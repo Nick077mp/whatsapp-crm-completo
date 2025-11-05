@@ -568,12 +568,20 @@ app.get('/qr', (req, res) => {
 
 app.post('/send-message', async (req, res) => {
     try {
-        const { to, message } = req.body;
+        const { to, message = '', type = 'text', media_url, filename } = req.body;
         
-        if (!to || !message) {
+        if (!to) {
             return res.status(400).json({
                 success: false,
-                error: 'Faltan parámetros: to, message'
+                error: 'Falta parámetro: to'
+            });
+        }
+        
+        // Para multimedia, el message puede estar vacío
+        if (type === 'text' && !message) {
+            return res.status(400).json({
+                success: false,
+                error: 'Para mensajes de texto se requiere el parámetro message'
             });
         }
         
@@ -598,15 +606,74 @@ app.post('/send-message', async (req, res) => {
             }
         }
         
-        console.log("📤 Enviando mensaje:", { to: targetJid, message });
+        console.log("📤 Enviando mensaje:", { to: targetJid, message, type, media_url });
         
-        // Enviar mensaje
-        const sentMessage = await sock.sendMessage(targetJid, { text: message });
+        let sentMessage;
+        
+        // Enviar según el tipo de mensaje
+        if (type === 'text') {
+            // Mensaje de texto simple
+            sentMessage = await sock.sendMessage(targetJid, { text: message });
+        } else if (media_url) {
+            // Mensaje multimedia
+            console.log(`📎 Enviando ${type} desde URL: ${media_url}`);
+            
+            try {
+                // Descargar el archivo desde la URL
+                const axios = require('axios');
+                console.log(`🌐 Descargando archivo desde: ${media_url}`);
+                const response = await axios.get(media_url, { responseType: 'arraybuffer' });
+                const mediaBuffer = Buffer.from(response.data);
+                console.log(`📦 Archivo descargado, tamaño: ${mediaBuffer.length} bytes`);
+                
+                // Preparar mensaje multimedia según el tipo
+                let messageContent;
+                
+                if (type === 'image') {
+                    messageContent = {
+                        image: mediaBuffer,
+                        caption: message,
+                        fileName: filename || 'image.jpg'
+                    };
+                } else if (type === 'video') {
+                    messageContent = {
+                        video: mediaBuffer,
+                        caption: message,
+                        fileName: filename || 'video.mp4'
+                    };
+                } else if (type === 'audio') {
+                    messageContent = {
+                        audio: mediaBuffer,
+                        fileName: filename || 'audio.mp3'
+                    };
+                } else if (type === 'document') {
+                    messageContent = {
+                        document: mediaBuffer,
+                        fileName: filename || 'document.pdf',
+                        caption: message
+                    };
+                } else {
+                    throw new Error(`Tipo de multimedia no soportado: ${type}`);
+                }
+                
+                console.log(`📤 Enviando ${type} a ${targetJid}`);
+                sentMessage = await sock.sendMessage(targetJid, messageContent);
+                
+            } catch (mediaError) {
+                console.error(`❌ Error procesando multimedia:`, mediaError);
+                throw new Error(`Error procesando archivo multimedia: ${mediaError.message}`);
+            }
+        } else {
+            throw new Error('Para mensajes multimedia se requiere media_url');
+        }
+        
+        console.log(`✅ Mensaje ${type} enviado exitosamente:`, sentMessage.key.id);
         
         res.json({
             success: true,
             message_id: sentMessage.key.id,
-            target: targetJid
+            target: targetJid,
+            type: type
         });
         
     } catch (error) {
