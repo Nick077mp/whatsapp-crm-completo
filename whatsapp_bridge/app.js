@@ -23,7 +23,7 @@ let qrCodeData = null;
 const recentMessagesCache = new Map();
 
 // URL del Django backend
-const DJANGO_BASE_URL = 'http://localhost:8000';
+const DJANGO_BASE_URL = 'http://172.27.32.23:8000';
 
 // Directorio para archivos multimedia temporales
 const MEDIA_DIR = path.join(__dirname, 'media');
