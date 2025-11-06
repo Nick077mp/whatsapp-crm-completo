@@ -46,7 +46,7 @@ class Contact(models.Model):
         unique_together = ['platform', 'platform_user_id']
     
     def __str__(self):
-        return f"{self.name or self.phone or 'Sin nombre'} ({self.platform.name})"
+        return f"Message from {self.sender_type} - {self.content[:50]}"
     
     @property
     def display_name(self):
