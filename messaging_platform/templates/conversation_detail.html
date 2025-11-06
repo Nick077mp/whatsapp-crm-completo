@@ -617,11 +617,6 @@ function openTemplatesModal() {
             messageDiv.innerHTML = messageHTML;
             return messageDiv;
         }function checkForNewMessages() {
-    if (!chatAutoRefreshEnabled) {
-        console.log('⏸️ Auto-refresh pausado, omitiendo verificación');
-        return;
-    }
-    
     console.log(`🔍 Verificando nuevos mensajes... (actual: ${chatLastMessageCount})`);
     
     fetch(`/api/conversations/${conversationId}/messages/`, {
@@ -970,41 +965,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Inicializar auto-refresh del chat
     console.log('🔄 Iniciando sistema de auto-refresh...');
-    console.log(`📊 Estado inicial - Mensajes: ${chatLastMessageCount}, Enabled: ${chatAutoRefreshEnabled}`);
+    console.log(`📊 Estado inicial - Mensajes: ${chatLastMessageCount}, Siempre activo: ${chatAutoRefreshEnabled}`);
     startChatAutoRefresh();
     
     // 🎯 Auto-scroll periódico solo cuando llegan mensajes nuevos
     // (removido el scroll automático constante para permitir navegación manual)
     
-    // Pausar auto-refresh cuando el usuario está escribiendo
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.addEventListener('focus', function() {
-            chatAutoRefreshEnabled = false;
-            console.log('⏸️ Chat auto-refresh pausado (usuario escribiendo)');
-        });
-        
-        messageInput.addEventListener('blur', function() {
-            // Reanudar después de un pequeño delay para evitar conflictos
-            setTimeout(() => {
-                chatAutoRefreshEnabled = true;
-                console.log('▶️ Chat auto-refresh reanudado');
-            }, 1000);
-        });
-        
-        // También pausar mientras se está escribiendo
-        messageInput.addEventListener('keydown', function() {
-            chatAutoRefreshEnabled = false;
-        });
-        
-        messageInput.addEventListener('keyup', function() {
-            // Reanudar después de 2 segundos de inactividad
-            clearTimeout(this.typingTimer);
-            this.typingTimer = setTimeout(() => {
-                chatAutoRefreshEnabled = true;
-            }, 2000);
-        });
-    }
+    // Auto-refresh siempre activo - sin pausas por escritura
+    console.log('🔄 Auto-refresh configurado para estar siempre activo');
 });
 
 // Limpiar intervals al salir de la página
