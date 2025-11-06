@@ -22,7 +22,12 @@ CSRF_TRUSTED_ORIGINS = [
     'https://8000-isd3q9b53rtrwh3wsth2s-29d03aeb.manusvm.computer',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
+    'http://192.168.1.176:8000',  # IP de Windows para acceso desde red local
 ]
+
+# Configuración adicional para CSRF con red local
+CSRF_COOKIE_DOMAIN = None  # Permitir cualquier dominio
+CSRF_COOKIE_SAMESITE = 'Lax'  # Permitir cookies cross-site
 
 
 # Application definition
@@ -196,7 +201,7 @@ LOGOUT_REDIRECT_URL = '/login/'
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
-CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # Permitir acceso desde JavaScript para file uploads
 SESSION_COOKIE_HTTPONLY = True
 
 # In production, set these to True:
