@@ -23,6 +23,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'http://192.168.1.176:8000',  # IP de Windows para acceso desde red local
+    'http://172.27.32.23:8000',   # IP de WSL para acceso desde Windows
 ]
 
 # Configuración adicional para CSRF con red local
