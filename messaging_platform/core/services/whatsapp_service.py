@@ -75,6 +75,14 @@ class WhatsAppService:
                 # Guardar mensaje en la base de datos
                 if conversation:
                     message_id = response_data.get('message_id', '')
+                    
+                    # Si message_id está vacío, generar uno único
+                    if not message_id:
+                        import uuid
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        message_id = f"agent_{timestamp}_{str(uuid.uuid4())[:8]}"
+                    
                     Message.objects.create(
                         conversation=conversation,
                         platform_message_id=message_id,
@@ -118,6 +126,14 @@ class WhatsAppService:
                 if response.status_code == 200 and response_data.get('success'):
                     if conversation:
                         message_id = response_data.get('message_id', '')
+                        
+                        # Si message_id está vacío, generar uno único
+                        if not message_id:
+                            import uuid
+                            from datetime import datetime
+                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            message_id = f"agent_{timestamp}_{str(uuid.uuid4())[:8]}"
+                        
                         Message.objects.create(
                             conversation=conversation,
                             platform_message_id=message_id,
@@ -466,6 +482,13 @@ class WhatsAppService:
                     final_content = '⚠️ Mensaje enviado desde WhatsApp (contenido no disponible)'
                 else:
                     final_content = self._get_media_fallback_content(message_type)
+            
+            # Si message_id está vacío, generar uno único (por seguridad)
+            if not message_id:
+                import uuid
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                message_id = f"agent_{timestamp}_{str(uuid.uuid4())[:8]}"
             
             Message.objects.create(
                 conversation=conversation,

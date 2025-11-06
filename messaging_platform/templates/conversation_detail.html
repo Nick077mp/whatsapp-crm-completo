@@ -1,4 +1,7 @@
 {% extends 'base.html' %}
+{% load static %}
+{% csrf_token %}
+<meta name="csrf-token" content="{{ csrf_token }}">
 {% block title %}Chat con {{ conversation.contact.display_name }} - Plataforma de Mensajería{% endblock %}
 
 {% block extra_css %}
@@ -391,15 +394,11 @@ function sendMessage() {
 }
 
 function loadMessages() {
-    fetch(`/api/conversations/${conversationId}/messages/`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Actualizar los mensajes (implementación simplificada)
-                location.reload();
-            }
-        })
-        .catch(error => console.error('Error al cargar mensajes:', error));
+    console.log('🔄 Recargando mensajes después del upload...');
+    // Usar un pequeño delay para asegurar que el mensaje se guardó en DB
+    setTimeout(() => {
+        location.reload();
+    }, 500);
 }
 
 // Enter para enviar mensaje
@@ -536,19 +535,45 @@ function createMessageElement(message) {
             ${message.content ? escapeHtml(message.content) : ''}
     `;
     
+    // Función para corregir URLs de media
+    function fixMediaUrl(url) {
+        if (!url) return url;
+        
+        // Detectar URLs duplicadas
+        if (url.includes('http://localhost:8000http://')) {
+            let parts = url.split('/media/');
+            if (parts.length > 1) {
+                url = `http://192.168.1.176:8000/media/${parts[parts.length - 1]}`;
+            }
+        }
+        // Cambiar localhost por IP de red
+        else if (url.startsWith('http://localhost:8000')) {
+            url = url.replace('http://localhost:8000', 'http://192.168.1.176:8000');
+        }
+        // Convertir URLs relativas a absolutas
+        else if (url.startsWith('/media/')) {
+            url = `http://192.168.1.176:8000${url}`;
+        }
+        
+        return url;
+    }
+    
+    // Corregir URL de media
+    const correctedMediaUrl = fixMediaUrl(message.media_url);
+    
     // Agregar multimedia si existe, usando la misma estructura que el template
-    if (message.media_url) {
+    if (correctedMediaUrl) {
         if (message.message_type === 'image') {
             messageHTML += `
                 <div class="media-container">
-                    <img src="${message.media_url}" alt="Imagen" style="max-width: 200px; border-radius: 4px;">
+                    <img src="${correctedMediaUrl}" alt="Imagen" style="max-width: 200px; border-radius: 4px;">
                 </div>
             `;
         } else if (message.message_type === 'video') {
             messageHTML += `
                 <div class="media-container">
                     <video controls style="max-width: 200px;">
-                        <source src="${message.media_url}" type="video/mp4">
+                        <source src="${correctedMediaUrl}" type="video/mp4">
                         Tu navegador no soporta la reproducción de video.
                     </video>
                 </div>
@@ -557,7 +582,7 @@ function createMessageElement(message) {
             messageHTML += `
                 <div class="media-container">
                     <audio controls>
-                        <source src="${message.media_url}" type="audio/mpeg">
+                        <source src="${correctedMediaUrl}" type="audio/mpeg">
                         Tu navegador no soporta la reproducción de audio.
                     </audio>
                 </div>
@@ -565,7 +590,7 @@ function createMessageElement(message) {
         } else if (message.message_type === 'document') {
             messageHTML += `
                 <div class="media-container">
-                    <a href="${message.media_url}" target="_blank" class="btn btn-outline">
+                    <a href="${correctedMediaUrl}" target="_blank" class="btn btn-outline">
                         📄 Abrir documento
                     </a>
                 </div>
@@ -651,7 +676,7 @@ function uploadFile(file) {
     formData.append('file', file);
     formData.append('conversation_id', conversationId);
     formData.append('platform', platform);
-    formData.append('recipient_id', recipientId);
+    formData.append('recipient', recipientId);
     formData.append('file_type', fileType);
     
     // Mostrar indicador de carga
@@ -661,14 +686,31 @@ function uploadFile(file) {
     sendButton.textContent = 'Enviando archivo...';
     
     const csrfToken = getCSRFToken();
+    console.log('🔑 Token CSRF obtenido:', csrfToken ? 'SÍ' : 'NO');
     if (!csrfToken) {
+        console.error('❌ Error: No se pudo obtener token CSRF');
         alert('Error: No se pudo obtener token CSRF');
         sendButton.disabled = false;
         sendButton.textContent = originalText;
         return;
     }
     
-    fetch('/api/send-file-message/', {
+    console.log('📤 Preparando envío de archivo...');
+    console.log('📋 Datos:', {
+        file: file.name,
+        size: file.size + ' bytes',
+        type: fileType,
+        conversationId: conversationId,
+        platform: platform || 'No definido',
+        recipient: recipientId || 'No definido'
+    });
+    
+    let uploadUrl = '/api/send-file-message/';
+    
+    console.log('🌐 URL de upload:', uploadUrl);
+    console.log('📦 FormData construido, enviando...');
+    
+    fetch(uploadUrl, {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrfToken
@@ -676,24 +718,31 @@ function uploadFile(file) {
         body: formData
     })
     .then(response => {
+        console.log('📡 Respuesta del servidor:', response.status, response.statusText);
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            return response.text().then(text => {
+                console.error('❌ Error del servidor:', text);
+                throw new Error(`HTTP ${response.status}: ${response.statusText} - ${text}`);
+            });
         }
         return response.json();
     })
     .then(data => {
+        console.log('📄 Respuesta JSON:', data);
         if (data.success) {
             // Limpiar input de archivo
             document.getElementById('fileInput').value = '';
+            console.log('✅ Archivo enviado exitosamente, recargando página...');
+            alert('¡Archivo enviado correctamente! La página se recargará para mostrar el mensaje.');
             loadMessages(); // Recargar mensajes
-            console.log('✅ Archivo enviado exitosamente');
         } else {
+            console.error('❌ Error en respuesta:', data.error);
             alert('Error al enviar archivo: ' + (data.error || 'Error desconocido'));
         }
     })
     .catch(error => {
-        console.error('Error:', error);
-        alert('Error al enviar archivo');
+        console.error('❌ Error en catch:', error);
+        alert('Error al enviar archivo: ' + error.message);
     })
     .finally(() => {
         sendButton.disabled = false;
@@ -788,6 +837,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initResponseTimeMonitoring();
     
     // Inicializar auto-refresh del chat
+    console.log('🔄 Iniciando sistema de auto-refresh...');
+    console.log(`📊 Estado inicial - Mensajes: ${chatLastMessageCount}, Enabled: ${chatAutoRefreshEnabled}`);
     startChatAutoRefresh();
     
     // Pausar auto-refresh cuando el usuario está escribiendo
@@ -830,5 +881,79 @@ window.addEventListener('beforeunload', function() {
         clearInterval(chatAutoRefreshInterval);
     }
 });
+
+// Función global para corregir URLs de media para acceso desde red local
+function fixAllMediaUrls() {
+    // Corregir todas las imágenes
+    document.querySelectorAll('img[src*="/media/"], img[src*="localhost:8000"]').forEach(img => {
+        let src = img.src;
+        if (src.includes('http://localhost:8000http://')) {
+            let parts = src.split('/media/');
+            if (parts.length > 1) {
+                img.src = `http://192.168.1.176:8000/media/${parts[parts.length - 1]}`;
+            }
+        } else if (src.includes('localhost:8000')) {
+            img.src = src.replace('http://localhost:8000', 'http://192.168.1.176:8000');
+        }
+    });
+    
+    // Corregir todos los audios y videos
+    document.querySelectorAll('audio source[src*="/media/"], audio source[src*="localhost:8000"], video source[src*="/media/"], video source[src*="localhost:8000"]').forEach(source => {
+        let src = source.src;
+        if (src.includes('http://localhost:8000http://')) {
+            let parts = src.split('/media/');
+            if (parts.length > 1) {
+                source.src = `http://192.168.1.176:8000/media/${parts[parts.length - 1]}`;
+            }
+        } else if (src.includes('localhost:8000')) {
+            source.src = src.replace('http://localhost:8000', 'http://192.168.1.176:8000');
+        }
+        // Recargar el elemento multimedia
+        source.parentNode.load();
+    });
+    
+    // Corregir todos los enlaces
+    document.querySelectorAll('a[href*="/media/"], a[href*="localhost:8000"]').forEach(link => {
+        let href = link.href;
+        if (href.includes('http://localhost:8000http://')) {
+            let parts = href.split('/media/');
+            if (parts.length > 1) {
+                link.href = `http://192.168.1.176:8000/media/${parts[parts.length - 1]}`;
+            }
+        } else if (href.includes('localhost:8000')) {
+            link.href = href.replace('http://localhost:8000', 'http://192.168.1.176:8000');
+        }
+    });
+}
+
+// Ejecutar corrección al cargar la página
+document.addEventListener('DOMContentLoaded', fixAllMediaUrls);
+
+// También ejecutar después de cada actualización de mensajes
+const originalLoadMessages = loadMessages;
+if (typeof loadMessages === 'function') {
+    loadMessages = function(...args) {
+        originalLoadMessages.apply(this, args);
+        setTimeout(fixAllMediaUrls, 500); // Dar tiempo para que se rendericen los elementos
+    };
+}
+
+// Aplicar corrección de URLs también después del auto-refresh
+const originalAppendNewMessages = appendNewMessages;
+if (typeof appendNewMessages === 'function') {
+    appendNewMessages = function(newMessages) {
+        originalAppendNewMessages.call(this, newMessages);
+        setTimeout(fixAllMediaUrls, 200); // Corregir URLs de mensajes nuevos
+    };
+}
+
+// Aplicar corrección después de updateMessagesDisplay
+const originalUpdateMessagesDisplay = updateMessagesDisplay;
+if (typeof updateMessagesDisplay === 'function') {
+    updateMessagesDisplay = function(messages) {
+        originalUpdateMessagesDisplay.call(this, messages);
+        setTimeout(fixAllMediaUrls, 200); // Corregir URLs de todos los mensajes
+    };
+}
 </script>
 {% endblock %}

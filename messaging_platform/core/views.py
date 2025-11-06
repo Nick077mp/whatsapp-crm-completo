@@ -1584,6 +1584,10 @@ def api_send_file_message(request):
         from django.core.files.storage import default_storage
         from django.conf import settings
         
+        print("📁 Upload request received")
+        print(f"📋 POST data: {dict(request.POST)}")
+        print(f"📎 FILES data: {list(request.FILES.keys())}")
+        
         conversation_id = request.POST.get('conversation_id')
         platform = request.POST.get('platform')
         recipient = request.POST.get('recipient')
@@ -1638,36 +1642,142 @@ def api_send_file_message(request):
         
         message_type = message_type_map.get(file_type, 'text')
         
-        # Crear mensaje en la base de datos
-        message = Message.objects.create(
-            conversation=conversation,
-            sender_type='agent',
-            sender_user=request.user,
-            content=message_text or f"{file_type.title()} enviado: {uploaded_file.name}",
-            message_type=message_type,
-            media_url=file_url
-        )
+        # **ENVIAR ARCHIVO A TRAVÉS DEL WHATSAPP BRIDGE** 
+        from .services.whatsapp_service import WhatsAppService
         
-        # Actualizar conversación
-        conversation.last_message_at = timezone.now()
-        conversation.is_answered = True
-        conversation.needs_response = False
-        conversation.save()
+        # Obtener el número de teléfono del contacto
+        contact_phone = conversation.contact.phone
+        if not contact_phone:
+            return JsonResponse({'success': False, 'error': 'No se encontró número de teléfono del contacto'})
         
-        # Log de actividad
-        ActivityLog.objects.create(
-            user=request.user,
-            conversation=conversation,
-            action='send_file',
-            description=f'Archivo enviado: {uploaded_file.name} ({file_type})'
-        )
+        # Crear URL completa del archivo para el bridge
+        # Como accedemos desde red local, usar la IP configurada
+        base_url = "http://192.168.1.176:8000"
+        full_media_url = f"{base_url}{file_url}"
         
-        return JsonResponse({
-            'success': True,
-            'message': 'Archivo enviado exitosamente',
-            'file_url': file_url,
-            'message_id': message.id
-        })
+        # Enviar a través del WhatsApp Bridge usando endpoint directo
+        import requests
+        bridge_url = "http://localhost:3000"
+        
+        payload = {
+            'to': contact_phone,
+            'type': file_type,  # image, video, audio, document
+            'media_url': full_media_url,
+            'message': message_text or f"{file_type.title()} enviado: {uploaded_file.name}",
+            'filename': uploaded_file.name
+        }
+        
+        print(f"📤 Enviando archivo a WhatsApp Bridge:")
+        print(f"   📱 Destino: {contact_phone}")
+        print(f"   📎 Tipo: {file_type}")
+        print(f"   🔗 URL: {full_media_url}")
+        print(f"   📝 Mensaje: {payload['message']}")
+        
+        try:
+            # Enviar a WhatsApp Bridge
+            response = requests.post(f"{bridge_url}/send-message", json=payload, timeout=30)
+            response_data = response.json()
+            
+            print(f"📡 Respuesta del Bridge: {response.status_code} - {response_data}")
+            
+            if response.status_code == 200 and response_data.get('success'):
+                # Éxito: Guardar mensaje en BD con ID del bridge
+                import uuid
+                platform_message_id = response_data.get('message_id', f"agent_{timestamp}_{str(uuid.uuid4())[:8]}")
+                
+                # Crear mensaje en la base de datos
+                message = Message.objects.create(
+                    conversation=conversation,
+                    platform_message_id=platform_message_id,
+                    sender_type='agent',
+                    sender_user=request.user,
+                    content=message_text or f"{file_type.title()} enviado: {uploaded_file.name}",
+                    message_type=message_type,
+                    media_url=file_url
+                )
+                
+                # Actualizar conversación
+                conversation.last_message_at = timezone.now()
+                conversation.last_response_at = timezone.now()
+                conversation.is_answered = True
+                conversation.needs_response = False
+                conversation.save()
+                
+                # Log de actividad
+                ActivityLog.objects.create(
+                    user=request.user,
+                    conversation=conversation,
+                    action='send_file',
+                    description=f'Archivo enviado a WhatsApp: {uploaded_file.name} ({file_type})'
+                )
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Archivo enviado exitosamente a WhatsApp',
+                    'file_url': file_url,
+                    'message_id': message.id,
+                    'whatsapp_message_id': platform_message_id
+                })
+            else:
+                # Error del Bridge: guardar solo localmente como fallback
+                error_msg = response_data.get('error', 'Error desconocido del bridge')
+                print(f"❌ Error del WhatsApp Bridge: {error_msg}")
+                
+                # Generar platform_message_id local
+                import uuid
+                platform_message_id = f"agent_{timestamp}_{str(uuid.uuid4())[:8]}"
+                
+                # Crear mensaje en la base de datos (solo local)
+                message = Message.objects.create(
+                    conversation=conversation,
+                    platform_message_id=platform_message_id,
+                    sender_type='agent',
+                    sender_user=request.user,
+                    content=f"⚠️ {message_text or f'{file_type.title()} enviado: {uploaded_file.name}'} (Solo guardado localmente - Error WhatsApp: {error_msg})",
+                    message_type=message_type,
+                    media_url=file_url
+                )
+                
+                # Actualizar conversación parcialmente
+                conversation.last_message_at = timezone.now()
+                conversation.save()
+                
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Error al enviar a WhatsApp: {error_msg}. Archivo guardado solo localmente.',
+                    'file_url': file_url,
+                    'message_id': message.id
+                })
+                
+        except requests.RequestException as e:
+            # Error de conexión: guardar solo localmente
+            print(f"❌ Error de conexión con WhatsApp Bridge: {str(e)}")
+            
+            # Generar platform_message_id local
+            import uuid
+            platform_message_id = f"agent_{timestamp}_{str(uuid.uuid4())[:8]}"
+            
+            # Crear mensaje en la base de datos (solo local)
+            message = Message.objects.create(
+                conversation=conversation,
+                platform_message_id=platform_message_id,
+                sender_type='agent',
+                sender_user=request.user,
+                content=f"⚠️ {message_text or f'{file_type.title()} enviado: {uploaded_file.name}'} (Solo guardado localmente - Bridge no disponible)",
+                message_type=message_type,
+                media_url=file_url
+            )
+            
+            # Actualizar conversación parcialmente
+            conversation.last_message_at = timezone.now()
+            conversation.save()
+            
+            return JsonResponse({
+                'success': False,
+                'error': f'WhatsApp Bridge no disponible: {str(e)}. Archivo guardado solo localmente.',
+                'file_url': file_url,
+                'message_id': message.id
+            })
         
     except Exception as e:
         return JsonResponse({
