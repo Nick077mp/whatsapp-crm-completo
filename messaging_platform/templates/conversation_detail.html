@@ -67,6 +67,19 @@
     font-size: 0.8rem;
     margin-bottom: 0.5rem;
     opacity: 0.8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem; /* Espacio entre nombre y fecha */
+}
+
+.message-header strong {
+    flex: 1; /* El nombre ocupa el espacio disponible */
+}
+
+.message-header .message-timestamp {
+    flex-shrink: 0; /* La fecha mantiene su tamaño */
+    margin-left: auto; /* Empuja la fecha hacia la derecha */
 }
 
 .message-input-container {
@@ -202,6 +215,46 @@
 /* Asegurar que el texto no sea muted en los mensajes */
 .message .text-muted {
     color: #555555 !important;
+}
+
+/* 🎬 Animaciones para nuevos mensajes */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 🎯 Contenedor de mensajes - Con scroll normal y posicionamiento al final */
+#messagesContainer {
+    display: block; /* Cambiar a block para scroll normal */
+    height: 500px; /* Altura fija para forzar scroll cuando sea necesario */
+    max-height: 600px;
+    overflow-y: scroll; /* Siempre mostrar barra de scroll */
+    padding: 1rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+}
+
+/* Asegurar que los mensajes no se compriman */
+.message {
+    flex-shrink: 0;
+}
+
+/* Animación para mensajes nuevos */
+.message.new-message {
+    animation: fadeInUp 0.4s ease-out;
 }
 </style>
 {% endblock %}
@@ -377,8 +430,27 @@ function sendMessage() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            // 🚀 Crear y mostrar el mensaje inmediatamente
+            const messageData = {
+                sender_name: 'Tú', // Nombre del agente actual
+                sender_type: 'agent',
+                content: message,
+                created_at: new Date().toISOString(),
+                message_type: 'text'
+            };
+            
+            const messageElement = createMessageElement(messageData);
+            const messagesContainer = document.getElementById('messagesContainer');
+            messagesContainer.appendChild(messageElement);
+            
+            // 🎯 SIEMPRE scroll al final cuando envías
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
             input.value = '';
-            loadMessages(); // Recargar mensajes
+            console.log('✅ Mensaje enviado y mostrado inmediatamente - SIN retraso');
+            
+            // Actualizar contador para evitar duplicados cuando llegue la respuesta del servidor
+            chatLastMessageCount++;
         } else {
             alert('Error al enviar mensaje: ' + (data.error || 'Error desconocido'));
         }
@@ -394,11 +466,11 @@ function sendMessage() {
 }
 
 function loadMessages() {
-    console.log('🔄 Recargando mensajes después del upload...');
-    // Usar un pequeño delay para asegurar que el mensaje se guardó en DB
+    console.log('🔄 Actualizando mensajes después de enviar...');
+    // Usar el mismo sistema que cuando se reciben mensajes (sin reload)
     setTimeout(() => {
-        location.reload();
-    }, 500);
+        checkForNewMessages(); // Usa la misma función que para mensajes entrantes
+    }, 200);
 }
 
 // Enter para enviar mensaje
@@ -415,12 +487,136 @@ function openTemplatesModal() {
     window.open('/templates/', '_blank');
 }
 
-// Sistema de auto-refresh para mensajes
-let chatAutoRefreshEnabled = true;
-let chatAutoRefreshInterval = null;
-let chatLastMessageCount = {{ messages|length }};
+        // Sistema de auto-refresh para mensajes
+        let chatAutoRefreshEnabled = true;
+        let chatAutoRefreshInterval = null;
+        let chatLastMessageCount = {{ messages|length }};
+        let justSentMessage = false; // Flag para saber si acabamos de enviar un mensaje
 
-function checkForNewMessages() {
+        // 🔧 Función global para corregir URLs de media
+        function fixMediaUrl(url) {
+            if (!url) return url;
+            
+            // Detectar URLs duplicadas
+            if (url.includes('http://localhost:8000http://')) {
+                let parts = url.split('/media/');
+                if (parts.length > 1) {
+                    url = `http://192.168.1.176:8000/media/${parts[parts.length - 1]}`;
+                }
+            }
+            // Cambiar localhost por IP de red
+            else if (url.startsWith('http://localhost:8000')) {
+                url = url.replace('http://localhost:8000', 'http://192.168.1.176:8000');
+            }
+            // Convertir URLs relativas a absolutas
+            else if (url.startsWith('/media/')) {
+                url = `http://192.168.1.176:8000${url}`;
+            }
+            
+            return url;
+        }
+
+        // 🔧 Función global para escapar HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        // 🏗️ Función para crear elemento de mensaje (mensajes enviados inmediatamente)
+        function createMessageElement(messageData) {
+            const messageDiv = document.createElement('div');
+            // Usar la clase CSS correcta: message-sent para agentes, message-received para usuarios
+            const messageClass = messageData.sender_type === 'agent' ? 'message-sent' : 'message-received';
+            messageDiv.className = `message ${messageClass}`;
+            
+            const timestamp = new Date(messageData.created_at).toLocaleString('es-ES', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <strong>${messageData.sender_name}</strong>
+                    <span class="message-date">${timestamp}</span>
+                </div>
+                <div class="message-content">${messageData.content}</div>
+            `;
+            
+            return messageDiv;
+        }
+
+        // 🏗️ Función para crear elemento desde objeto del servidor
+        function createMessageFromObject(message) {
+            const messageDiv = document.createElement('div');
+            // Usar la clase CSS correcta: message-sent para agentes, message-received para usuarios
+            const messageClass = message.sender_type === 'agent' ? 'message-sent' : 'message-received';
+            messageDiv.className = `message ${messageClass}`;
+            
+            const timestamp = new Date(message.created_at).toLocaleString('es-ES', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+            
+            let messageHTML = `
+                <div class="message-header">
+                    <strong>${escapeHtml(message.sender_name)}</strong>
+                    <span class="message-date">${timestamp}</span>
+                </div>
+                <div class="message-content">
+                    ${message.content ? escapeHtml(message.content) : ''}
+            `;
+            
+            // Agregar multimedia si existe
+            if (message.media_url) {
+                const correctedMediaUrl = fixMediaUrl(message.media_url);
+                
+                if (message.message_type === 'image') {
+                    messageHTML += `
+                        <div class="media-container">
+                            <img src="${correctedMediaUrl}" alt="Imagen" style="max-width: 200px; border-radius: 4px;" onload="setTimeout(() => { const container = document.getElementById('messagesContainer'); if (container) container.scrollTop = container.scrollHeight; }, 50);">
+                        </div>
+                    `;
+                } else if (message.message_type === 'video') {
+                    messageHTML += `
+                        <div class="media-container">
+                            <video controls style="max-width: 200px;">
+                                <source src="${correctedMediaUrl}" type="video/mp4">
+                                Tu navegador no soporta la reproducción de video.
+                            </video>
+                        </div>
+                    `;
+                } else if (message.message_type === 'audio') {
+                    messageHTML += `
+                        <div class="media-container">
+                            <audio controls>
+                                <source src="${correctedMediaUrl}" type="audio/mpeg">
+                                Tu navegador no soporta la reproducción de audio.
+                            </audio>
+                        </div>
+                    `;
+                } else if (message.message_type === 'document') {
+                    messageHTML += `
+                        <div class="media-container">
+                            <a href="${correctedMediaUrl}" target="_blank" class="btn btn-outline">
+                                📄 Abrir documento
+                            </a>
+                        </div>
+                    `;
+                }
+            }
+            
+            messageHTML += `</div>`; // Cerrar message-content
+            
+            messageDiv.innerHTML = messageHTML;
+            return messageDiv;
+        }function checkForNewMessages() {
     if (!chatAutoRefreshEnabled) {
         console.log('⏸️ Auto-refresh pausado, omitiendo verificación');
         return;
@@ -443,8 +639,14 @@ function checkForNewMessages() {
                 console.log(`🔄 ¡${data.messages.length - chatLastMessageCount} nuevos mensajes detectados!`);
                 // Solo agregar los mensajes nuevos
                 const newMessages = data.messages.slice(chatLastMessageCount);
-                appendNewMessages(newMessages);
+                appendNewMessages(newMessages, justSentMessage); // Pasar flag de si acabamos de enviar
                 chatLastMessageCount = data.messages.length;
+                
+                // Reset del flag después de procesar
+                if (justSentMessage) {
+                    justSentMessage = false;
+                    console.log('🔄 Flag justSentMessage reseteado');
+                }
                 
                 // Actualizar estado de conversación si es necesario
                 updateConversationStatus(data.conversation_status);
@@ -460,26 +662,51 @@ function checkForNewMessages() {
     });
 }
 
-function appendNewMessages(newMessages) {
-    const messagesContainer = document.getElementById('messagesContainer');
-    const wasAtBottom = messagesContainer.scrollHeight - messagesContainer.clientHeight <= messagesContainer.scrollTop + 1;
-    
-    // Agregar solo los mensajes nuevos
-    newMessages.forEach(message => {
-        const messageElement = createMessageElement(message);
-        messagesContainer.appendChild(messageElement);
-    });
-    
-    // Hacer scroll automático si el usuario estaba en el bottom
-    if (wasAtBottom) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-    
-    // Actualizar tiempo de respuesta solo si hay mensajes nuevos
-    if (newMessages.length > 0) {
-        initResponseTimeMonitoring();
-    }
-}
+        function appendNewMessages(newMessages, sentByUser = false) {
+            // Verificar si es un array de mensajes (objetos) o HTML string
+            if (Array.isArray(newMessages) && newMessages.length > 0) {
+                console.log(`📨 Agregando ${newMessages.length} nuevos mensajes al DOM`);
+                
+                // Verificar si hay multimedia en los mensajes
+                let hasMedia = newMessages.some(msg => msg.media_url && msg.message_type === 'image');
+                
+                newMessages.forEach(message => {
+                    const messageElement = createMessageFromObject(message);
+                    messagesContainer.appendChild(messageElement);
+                });
+                
+                // 🎯 SIEMPRE hacer scroll al final para cualquier mensaje nuevo
+                console.log('📨 Nuevos mensajes - SIEMPRE scroll al final');
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+                // 📸 Si hay imágenes, hacer scroll adicional después de un pequeño delay
+                if (hasMedia) {
+                    console.log('📸 Imagen detectada - aplicando scrolls múltiples');
+                    
+                    setTimeout(() => {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        console.log('📸 Scroll a los 200ms');
+                    }, 200);
+                    
+                    setTimeout(() => {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        console.log('📸 Scroll a los 500ms');
+                    }, 500);
+                    
+                    setTimeout(() => {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        console.log('� Scroll adicional para imágenes aplicado');
+                    }, 1200);
+                }
+                
+            } else if (typeof newMessages === 'string' && newMessages.trim()) {
+                // Compatibilidad con HTML strings (si aún se usan en algún lugar)
+                messagesContainer.innerHTML += newMessages;
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+        }// Función ensureAtBottom removida - CSS flexbox maneja posicionamiento automáticamente
+
+// Funciones de auto-scroll simplificadas removidas - Solo scroll automático siempre
 
 function updateConversationStatus(status) {
     // Actualizar elementos de la UI basados en el estado de la conversación
@@ -512,108 +739,7 @@ function updateMessagesDisplay(messages) {
     initResponseTimeMonitoring();
 }
 
-function createMessageElement(message) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${message.sender_type === 'agent' ? 'message-sent' : 'message-received'}`;
-    
-    // Agregar información del remitente y timestamp
-    const timestamp = new Date(message.created_at).toLocaleString('es-ES', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    }).replace(/\//g, '/').replace(' ', ', ');
-    
-    // Crear contenido usando la misma estructura que el template original
-    let messageHTML = `
-        <div class="message-header">
-            <strong>${escapeHtml(message.sender_name)}</strong>
-            <small class="message-timestamp">${timestamp}</small>
-        </div>
-        <div class="message-content">
-            ${message.content ? escapeHtml(message.content) : ''}
-    `;
-    
-    // Función para corregir URLs de media
-    function fixMediaUrl(url) {
-        if (!url) return url;
-        
-        // Detectar URLs duplicadas
-        if (url.includes('http://localhost:8000http://')) {
-            let parts = url.split('/media/');
-            if (parts.length > 1) {
-                url = `http://192.168.1.176:8000/media/${parts[parts.length - 1]}`;
-            }
-        }
-        // Cambiar localhost por IP de red
-        else if (url.startsWith('http://localhost:8000')) {
-            url = url.replace('http://localhost:8000', 'http://192.168.1.176:8000');
-        }
-        // Convertir URLs relativas a absolutas
-        else if (url.startsWith('/media/')) {
-            url = `http://192.168.1.176:8000${url}`;
-        }
-        
-        return url;
-    }
-    
-    // Corregir URL de media
-    const correctedMediaUrl = fixMediaUrl(message.media_url);
-    
-    // Agregar multimedia si existe, usando la misma estructura que el template
-    if (correctedMediaUrl) {
-        if (message.message_type === 'image') {
-            messageHTML += `
-                <div class="media-container">
-                    <img src="${correctedMediaUrl}" alt="Imagen" style="max-width: 200px; border-radius: 4px;">
-                </div>
-            `;
-        } else if (message.message_type === 'video') {
-            messageHTML += `
-                <div class="media-container">
-                    <video controls style="max-width: 200px;">
-                        <source src="${correctedMediaUrl}" type="video/mp4">
-                        Tu navegador no soporta la reproducción de video.
-                    </video>
-                </div>
-            `;
-        } else if (message.message_type === 'audio') {
-            messageHTML += `
-                <div class="media-container">
-                    <audio controls>
-                        <source src="${correctedMediaUrl}" type="audio/mpeg">
-                        Tu navegador no soporta la reproducción de audio.
-                    </audio>
-                </div>
-            `;
-        } else if (message.message_type === 'document') {
-            messageHTML += `
-                <div class="media-container">
-                    <a href="${correctedMediaUrl}" target="_blank" class="btn btn-outline">
-                        📄 Abrir documento
-                    </a>
-                </div>
-            `;
-        }
-    }
-    
-    messageHTML += `</div>`; // Cerrar message-content
-    
-    messageDiv.innerHTML = messageHTML;
-    return messageDiv;
-}
-
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
-}
+// Código duplicado eliminado - usando funciones globales definidas arriba
 
 function startChatAutoRefresh() {
     if (chatAutoRefreshInterval) {
@@ -826,11 +952,17 @@ function closeResponseAlert() {
     document.getElementById('responseTimeAlert').style.display = 'none';
 }
 
-// Auto-scroll al final de mensajes
+// 🎯 Inicialización con scroll al final al cargar
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Iniciando sistema con scroll funcional...');
+    
+    // Scroll inicial al final
     const messagesContainer = document.getElementById('messagesContainer');
     if (messagesContainer) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        setTimeout(() => {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            console.log('📜 Scroll inicial al final completado');
+        }, 100);
     }
     
     // Inicializar monitoreo de tiempo de respuesta
@@ -840,6 +972,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🔄 Iniciando sistema de auto-refresh...');
     console.log(`📊 Estado inicial - Mensajes: ${chatLastMessageCount}, Enabled: ${chatAutoRefreshEnabled}`);
     startChatAutoRefresh();
+    
+    // 🎯 Auto-scroll periódico solo cuando llegan mensajes nuevos
+    // (removido el scroll automático constante para permitir navegación manual)
     
     // Pausar auto-refresh cuando el usuario está escribiendo
     const messageInput = document.getElementById('messageInput');

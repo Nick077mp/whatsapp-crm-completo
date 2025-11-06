@@ -1146,6 +1146,154 @@ function assignAgent(conversationId, agentId) {
     });
 }
 
+// Función para el botón "Asignarme" con lógica diferente según el rol del usuario
+function assignConversation(conversationId) {
+    const userRole = '{{ user_role }}';
+    const userId = '{{ user_id }}';
+    
+    console.log(`🎯 Asignando conversación ${conversationId} - Usuario: ${userRole} (ID: ${userId})`);
+    
+    if (userRole === 'admin') {
+        // Para admin: mostrar el dropdown para seleccionar agente
+        console.log('👑 Admin detectado - Mostrando dropdown de agentes');
+        showAgentSelectorForAdmin(conversationId);
+    } else {
+        // Para soporte/ventas: auto-asignarse
+        console.log(`👤 ${userRole} detectado - Auto-asignando al usuario actual`);
+        assignMeToConversation(conversationId, userId);
+    }
+}
+
+// Función para auto-asignarse (soporte/ventas)
+function assignMeToConversation(conversationId, userId) {
+    console.log(`🎯 Iniciando asignación: conversación ${conversationId}, usuario ${userId}`);
+    
+    const button = document.querySelector(`button[onclick="assignConversation(${conversationId})"]`);
+    console.log('🔍 Botón encontrado:', button);
+    
+    if (button) {
+        button.disabled = true;
+        button.textContent = '⏳ Asignando...';
+    }
+    
+    console.log(`📡 Enviando request a: /api/conversations/${conversationId}/assign-agent/`);
+    
+    fetch(`/api/conversations/${conversationId}/assign-agent/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+        },
+        body: JSON.stringify({
+            agent_id: userId
+        })
+    })
+    .then(response => {
+        console.log('📥 Response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('📊 Response data:', data);
+        if (data.success) {
+            showNotification(`✅ Conversación asignada a ti`, 'success');
+            
+            // Actualizar la UI para reflejar la asignación
+            const conversationCard = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+            if (conversationCard) {
+                conversationCard.classList.add('agent-assigned');
+                
+                // Actualizar el botón a "Ver Chat"
+                if (button) {
+                    button.textContent = '💬 Ver Chat';
+                    button.onclick = () => viewConversation(conversationId);
+                    button.disabled = false;
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-primary');
+                }
+                
+                // Agregar información de agente asignado
+                let assignedInfo = conversationCard.querySelector('.assigned-info');
+                if (!assignedInfo) {
+                    assignedInfo = document.createElement('div');
+                    assignedInfo.className = 'assigned-info';
+                    const conversationBody = conversationCard.querySelector('.conversation-body');
+                    conversationBody.appendChild(assignedInfo);
+                }
+                assignedInfo.innerHTML = `<small>👤 Asignado a ti</small>`;
+                
+                // Habilitar botones de clasificación si existen
+                const classificationButtons = document.getElementById(`classificationButtons_${conversationId}`);
+                if (classificationButtons) {
+                    const buttons = classificationButtons.querySelectorAll('button');
+                    buttons.forEach(btn => {
+                        btn.disabled = false;
+                        btn.classList.remove('disabled');
+                        btn.removeAttribute('title');
+                    });
+                }
+            }
+        } else {
+            showNotification('❌ Error al asignar conversación: ' + data.error, 'error');
+            if (button) {
+                button.disabled = false;
+                button.textContent = '👤 Asignarme';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('❌ Error al asignar conversación', 'error');
+        if (button) {
+            button.disabled = false;
+            button.textContent = '👤 Asignarme';
+        }
+    });
+}
+
+// Función para mostrar el selector de agente para admin
+function showAgentSelectorForAdmin(conversationId) {
+    console.log(`👑 Mostrando selector de agente para admin - conversación ${conversationId}`);
+    
+    // Buscar el selector de agente para esta conversación
+    const agentSelector = document.getElementById(`agentSelector_${conversationId}`);
+    
+    if (agentSelector) {
+        // Habilitar el selector si estaba deshabilitado
+        agentSelector.disabled = false;
+        agentSelector.style.display = 'block';
+        
+        // Hacer focus para que el admin sepa que debe seleccionar
+        agentSelector.focus();
+        
+        // Cambiar el botón para indicar que debe seleccionar agente
+        const button = document.querySelector(`button[onclick="assignConversation(${conversationId})"]`);
+        if (button) {
+            button.textContent = '⬇️ Selecciona Agente';
+            button.disabled = true; // Deshabilitar hasta que seleccione un agente
+        }
+        
+        // Agregar event listener para cuando se seleccione un agente
+        agentSelector.onchange = function() {
+            const selectedAgentId = this.value;
+            if (selectedAgentId) {
+                console.log(`👤 Admin seleccionó agente ${selectedAgentId} para conversación ${conversationId}`);
+                assignAgent(conversationId, selectedAgentId);
+                
+                // Restaurar el botón
+                if (button) {
+                    button.textContent = '✅ Asignado';
+                    button.disabled = true;
+                }
+            }
+        };
+        
+        showNotification('👇 Selecciona un agente del dropdown', 'info');
+    } else {
+        console.error(`❌ No se encontró selector de agente para conversación ${conversationId}`);
+        showNotification('❌ Error: No se pudo encontrar el selector de agente', 'error');
+    }
+}
+
 function showAgentModal(conversationId) {
     // Esta función podría abrir un modal más detallado si fuera necesario
     // Por ahora, el selector inline es suficiente
@@ -1254,6 +1402,12 @@ function displayInboxSearchResults(conversations, query) {
                         <button class="btn btn-success btn-compact" onclick="assignConversation(${conv.id})">
                             � Asignarme
                         </button>
+                        <!-- Dropdown de agentes (solo visible para admin después de hacer clic en Asignarme) -->
+                        <select class="agent-selector" id="agentSelector_${conv.id}" 
+                                style="display: none; margin-top: 5px;"
+                                onchange="assignAgent(${conv.id}, this.value)">
+                            <option value="">Seleccionar Agente</option>
+                        </select>
                         <button class="btn-secondary btn-view-chat btn-compact" onclick="viewConversation(${conv.id})">
                             💬 Ver Chat
                         </button>
@@ -1390,7 +1544,11 @@ function loadAgentsForSelectors(conversations) {
             window.availableAgents.forEach(agent => {
                 const option = document.createElement('option');
                 option.value = agent.id;
-                option.textContent = `${agent.first_name} ${agent.last_name}`;
+                // Usar first_name y last_name, o username como fallback
+                const displayName = agent.first_name || agent.last_name ? 
+                    `${agent.first_name || ''} ${agent.last_name || ''}`.trim() : 
+                    agent.username;
+                option.textContent = displayName;
                 if (conv.assigned_to && conv.assigned_to_id === agent.id) {
                     option.selected = true;
                 }
@@ -1399,6 +1557,17 @@ function loadAgentsForSelectors(conversations) {
         }
     });
 }
+
+// Variables globales para agentes y configuración
+window.availableAgents = {{ available_agents_json|safe }};
+console.log('👥 Agentes disponibles cargados:', window.availableAgents);
+
+// Información del usuario actual
+window.currentUser = {
+    id: {{ user_id }},
+    role: '{{ user_role }}'
+};
+console.log('👤 Usuario actual:', window.currentUser);
 </script>
         </form>
     </div>

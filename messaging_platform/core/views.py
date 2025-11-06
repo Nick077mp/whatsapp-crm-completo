@@ -164,9 +164,9 @@ def dashboard_view(request):
 
 
 @login_required
-@sales_required
+@support_or_sales_required
 def leads_view(request):
-    """Vista de gestión de leads - SOLO VENTAS/RECUPERACIÓN"""
+    """Vista de gestión de leads - VENTAS/SOPORTE/RECUPERACIÓN"""
     
     # Migrar leads existentes de 'sale' a 'sales' para consistencia
     Lead.objects.filter(case_type='sale').update(case_type='sales')
@@ -200,7 +200,16 @@ def leads_view(request):
         'contact', 'contact__platform', 'assigned_to'
     ).order_by('-created_at')
     
-    # Filtros
+    # 🎯 Filtrar leads según el rol del usuario
+    if request.user.role == 'support':
+        # Usuarios de soporte ven solo leads de support
+        leads = leads.filter(case_type='support')
+    elif request.user.role == 'sales':
+        # Usuarios de ventas ven solo leads de sales y recovery
+        leads = leads.filter(case_type__in=['sales', 'recovery'])
+    # Admin puede ver todos (no filtrar)
+    
+    # Filtros adicionales por parámetros GET
     case_type = request.GET.get('case_type')
     status = request.GET.get('status')  # Este será el funnel_stage de la conversación
     
@@ -591,12 +600,28 @@ def inbox_view(request):
     unresponded_count = unassigned_conversations.filter(is_answered=False).count()
     responded_count = max(total_unassigned - unresponded_count, 0)
     
+    # Convertir agentes a formato JSON para JavaScript
+    import json
+    available_agents_json = json.dumps([
+        {
+            'id': agent['id'],
+            'username': agent['username'],
+            'first_name': agent['first_name'] or '',
+            'last_name': agent['last_name'] or '',
+            'role': agent['role']
+        }
+        for agent in available_agents
+    ])
+    
     context = {
         'unassigned_conversations': unassigned_conversations,
         'available_agents': available_agents,
+        'available_agents_json': available_agents_json,  # Versión JSON para JavaScript
         'total_unassigned': total_unassigned,
         'unresponded_count': unresponded_count,
         'responded_count': responded_count,
+        'user_role': request.user.role,  # Agregar rol del usuario para JavaScript
+        'user_id': request.user.id,  # Agregar ID del usuario para auto-asignación
     }
     
     return render(request, 'inbox.html', context)
@@ -1333,33 +1358,102 @@ def api_whatsapp_qr_updated(request):
 @login_required
 @require_http_methods(["POST"])
 def api_assign_conversation_agent(request, conversation_id):
-    """API para asignar una conversación a un agente específico"""
+    """API para asignar una conversación a un agente específico y clasificarla automáticamente"""
+    print(f"🚀 API ASSIGN: Recibiendo request para conversación {conversation_id}")
     try:
         conversation = get_object_or_404(Conversation, id=conversation_id)
+        print(f"📋 Conversación encontrada: {conversation.contact.display_name}")
+        
         data = json.loads(request.body)
+        print(f"📦 Data recibida: {data}")
+        
         agent_id = data.get('agent_id')
+        print(f"👤 Agent ID: {agent_id}")
         
         if agent_id:
             agent = get_object_or_404(User, id=agent_id, is_active=True)
             conversation.assigned_to = agent
+            
+            # 🎯 AUTO-CLASIFICAR SEGÚN EL ROL DEL AGENTE
+            # Clasificar si no tiene embudo o si el stage está en "none"
+            needs_classification = (
+                conversation.funnel_type == 'none' or 
+                not conversation.funnel_type or 
+                conversation.funnel_stage == 'none' or 
+                not conversation.funnel_stage
+            )
+            
+            if needs_classification:
+                if agent.role == 'sales':
+                    conversation.funnel_type = 'sales'
+                    conversation.funnel_stage = 'sales_initial'
+                    print(f"🎯 Auto-clasificando conversación {conversation_id} como VENTAS para agente {agent.username}")
+                elif agent.role == 'support':
+                    conversation.funnel_type = 'support'
+                    conversation.funnel_stage = 'support_initial'
+                    print(f"🎯 Auto-clasificando conversación {conversation_id} como SOPORTE para agente {agent.username}")
+                else:
+                    # Para admin, usar el contexto o asignar a ventas por defecto
+                    conversation.funnel_type = 'sales'
+                    conversation.funnel_stage = 'sales_initial'
+                    print(f"🎯 Auto-clasificando conversación {conversation_id} como VENTAS (admin) para agente {agent.username}")
+            else:
+                print(f"ℹ️ Conversación {conversation_id} ya tiene clasificación: {conversation.funnel_type}/{conversation.funnel_stage}")
+            
+            # 📈 CREAR LEAD SIEMPRE que se asigne agente (después de clasificar)
+            # Para ventas, recovery Y support
+            if conversation.funnel_type in ['sales', 'recovery', 'support']:
+                lead, created = Lead.objects.get_or_create(
+                    contact=conversation.contact,
+                    defaults={
+                        'assigned_to': agent,
+                        'case_type': conversation.funnel_type,
+                        'status': 'new',
+                        'notes': f'Lead creado automáticamente al asignar agente {agent.username}'
+                    }
+                )
+                if created:
+                    print(f"📈 Lead {lead.id} creado automáticamente para contacto {conversation.contact.display_name} - Tipo: {conversation.funnel_type}")
+                else:
+                    # Si ya existe, actualizar el agente asignado
+                    lead.assigned_to = agent
+                    lead.save()
+                    print(f"📈 Lead {lead.id} actualizado con agente {agent.username}")
+                
+                # Asociar conversación al lead si no tiene uno
+                if not conversation.lead:
+                    conversation.lead = lead
+                    print(f"🔗 Conversación {conversation_id} asociada al lead {lead.id}")
         else:
             conversation.assigned_to = None
             
         conversation.save()
+        print(f"💾 Conversación guardada exitosamente")
         
         ActivityLog.objects.create(
             user=request.user,
             conversation=conversation,
             action='assign_agent',
-            description=f'Conversación asignada a: {agent.username if agent_id else "Sin asignar"}'
+            description=f'Conversación asignada a: {agent.username if agent_id else "Sin asignar"}{" y clasificada en " + conversation.funnel_type if agent_id and conversation.funnel_type != "none" else ""}'
         )
+        print(f"📝 ActivityLog creado")
         
-        return JsonResponse({
+        response_data = {
             'success': True,
-            'message': 'Agente asignado exitosamente',
-            'agent_name': agent.username if agent_id else None
-        })
+            'message': 'Agente asignado y conversación clasificada exitosamente',
+            'agent_name': agent.username if agent_id else None,
+            'funnel_type': conversation.funnel_type if agent_id else None,
+            'funnel_stage': conversation.funnel_stage if agent_id else None
+        }
+        print(f"✅ Enviando respuesta exitosa: {response_data}")
+        
+        return JsonResponse(response_data)
     except Exception as e:
+        print(f"❌ Error en api_assign_conversation_agent: {str(e)}")
+        print(f"❌ Tipo de error: {type(e).__name__}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        
         return JsonResponse({
             'success': False,
             'error': str(e)
