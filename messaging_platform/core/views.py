@@ -100,10 +100,10 @@ def dashboard_view(request):
         total_conversations = base_conversations.count()
         unanswered_conversations = base_conversations.filter(needs_response=True).count()
         
-        # Conversaciones recientes - ordenadas por necesidad de respuesta - SIN LÍMITE ESTRICTO
+        # Conversaciones recientes - ordenadas por actualización más reciente primero
         recent_conversations = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
-        ).order_by('-needs_response', '-last_message_at')[:50]  # Aumentado de 20 a 50
+        ).order_by('-updated_at', '-needs_response', '-last_message_at')[:50]
         
         # Para compatibilidad con template
         assigned_conversations = []
@@ -117,27 +117,27 @@ def dashboard_view(request):
         total_conversations = base_conversations.count()
         unanswered_conversations = base_conversations.filter(needs_response=True).count()
         
-        # Conversaciones asignadas a este usuario - SIN LÍMITE
+        # Conversaciones asignadas a este usuario - ordenadas por actualización reciente
         assigned_conversations = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
         ).filter(assigned_to=request.user).order_by(
-            '-needs_response', '-last_message_at'
-        )  # Removido [:15] para mostrar todas
+            '-updated_at', '-needs_response', '-last_message_at'
+        )
         
         # Conversaciones disponibles (sin asignar) de su departamento
         available_conversations_queryset = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
         ).filter(assigned_to__isnull=True)
         
-        # Conversaciones disponibles para mostrar - SIN LÍMITE  
+        # Conversaciones disponibles para mostrar - ordenadas por actualización reciente
         unassigned_conversations = available_conversations_queryset.order_by(
-            '-needs_response', '-last_message_at'
-        )  # Removido [:15] para mostrar todas las disponibles
+            '-updated_at', '-needs_response', '-last_message_at'
+        )
         
-        # Conversaciones recientes: combinar asignadas y sin asignar del departamento - SIN LÍMITE ESTRICTO
+        # Conversaciones recientes: ordenadas por actualización más reciente primero
         recent_conversations = base_conversations.select_related(
             'contact', 'contact__platform', 'assigned_to'
-        ).order_by('-needs_response', '-last_message_at')[:100]  # Aumentado de 20 a 100
+        ).order_by('-updated_at', '-needs_response', '-last_message_at')[:100]
         
         # Conteo de conversaciones disponibles
         available_count = available_conversations_queryset.count()
@@ -164,9 +164,12 @@ def dashboard_view(request):
 
 
 @login_required
-@support_or_sales_required
 def leads_view(request):
-    """Vista de gestión de leads - VENTAS/SOPORTE/RECUPERACIÓN"""
+    """Vista de gestión de leads - ADMIN/VENTAS SOLAMENTE"""
+    
+    # 🔒 Solo admin y ventas pueden acceder a leads
+    if request.user.role not in ['admin', 'sales'] and not request.user.is_superuser:
+        return redirect('dashboard')
     
     # Migrar leads existentes de 'sale' a 'sales' para consistencia
     Lead.objects.filter(case_type='sale').update(case_type='sales')
@@ -175,8 +178,11 @@ def leads_view(request):
     conversations_without_leads = Conversation.objects.filter(
         status='active',
         funnel_type__in=['sales', 'support', 'recovery'],
+        assigned_to__isnull=False,  # Solo conversaciones asignadas
         lead__isnull=True
     ).select_related('contact', 'assigned_to')
+    
+    print(f"🔍 Encontradas {conversations_without_leads.count()} conversaciones sin lead que necesitan uno")
     
     for conv in conversations_without_leads:
         # Mapear el tipo de embudo al tipo de caso del lead
@@ -186,28 +192,42 @@ def leads_view(request):
             'recovery': 'recovery'
         }
         
-        Lead.objects.get_or_create(
+        # Verificar si ya existe un lead para este contacto y tipo
+        existing_lead = Lead.objects.filter(
             contact=conv.contact,
-            case_type=case_type_mapping[conv.funnel_type],
-            defaults={
-                'assigned_to': conv.assigned_to,
-                'notes': f'Lead creado automáticamente desde embudo de {conv.funnel_type}'
-            }
-        )
+            case_type=case_type_mapping[conv.funnel_type]
+        ).first()
+        
+        if not existing_lead:
+            lead = Lead.objects.create(
+                contact=conv.contact,
+                case_type=case_type_mapping[conv.funnel_type],
+                assigned_to=conv.assigned_to,
+                status='active',
+                notes=f'Lead creado automáticamente desde embudo de {conv.funnel_type} el {timezone.now().strftime("%Y-%m-%d %H:%M")}'
+            )
+            # Asociar la conversación al lead
+            conv.lead = lead
+            conv.save()
+            print(f"📈 Lead {lead.id} creado automáticamente para conversación {conv.id} - {conv.contact.display_name}")
     
-    # Obtener todos los leads
+    # Obtener todos los leads ordenados por última actividad
     leads = Lead.objects.select_related(
         'contact', 'contact__platform', 'assigned_to'
-    ).order_by('-created_at')
+    ).order_by('-updated_at', '-created_at')
     
     # 🎯 Filtrar leads según el rol del usuario
-    if request.user.role == 'support':
-        # Usuarios de soporte ven solo leads de support
-        leads = leads.filter(case_type='support')
-    elif request.user.role == 'sales':
+    if request.user.role == 'sales':
         # Usuarios de ventas ven solo leads de sales y recovery
         leads = leads.filter(case_type__in=['sales', 'recovery'])
-    # Admin puede ver todos (no filtrar)
+        print(f"🎯 Filtro VENTAS: mostrando {leads.count()} leads de sales/recovery")
+    elif request.user.role == 'admin' or request.user.is_superuser:
+        # Admin puede ver TODOS los leads (sales, support, recovery)
+        print(f"👑 Filtro ADMIN: mostrando {leads.count()} leads de todos los tipos")
+        # No filtrar - mostrar todos
+    else:
+        # Otros roles no tienen acceso (ya se redirigen arriba)
+        leads = leads.none()
     
     # Filtros adicionales por parámetros GET
     case_type = request.GET.get('case_type')
@@ -224,11 +244,13 @@ def leads_view(request):
             contact__conversations__funnel_stage=status
         ).distinct()
     
-    # Contar totales para mostrar estadísticas
+    # Contar totales para mostrar estadísticas (según los leads filtrados)
     total_leads = leads.count()
     sales_count = leads.filter(case_type='sales').count()
     support_count = leads.filter(case_type='support').count()
     recovery_count = leads.filter(case_type='recovery').count()
+    
+    print(f"📊 Estadísticas de leads - Total: {total_leads}, Sales: {sales_count}, Support: {support_count}, Recovery: {recovery_count}")
     
     # Opciones limpias para el dropdown (solo las tres principales)
     clean_case_types = [
@@ -1403,27 +1425,51 @@ def api_assign_conversation_agent(request, conversation_id):
             # 📈 CREAR LEAD SIEMPRE que se asigne agente (después de clasificar)
             # Para ventas, recovery Y support
             if conversation.funnel_type in ['sales', 'recovery', 'support']:
-                lead, created = Lead.objects.get_or_create(
-                    contact=conversation.contact,
-                    defaults={
-                        'assigned_to': agent,
-                        'case_type': conversation.funnel_type,
-                        'status': 'new',
-                        'notes': f'Lead creado automáticamente al asignar agente {agent.username}'
-                    }
-                )
-                if created:
-                    print(f"📈 Lead {lead.id} creado automáticamente para contacto {conversation.contact.display_name} - Tipo: {conversation.funnel_type}")
-                else:
-                    # Si ya existe, actualizar el agente asignado
-                    lead.assigned_to = agent
-                    lead.save()
-                    print(f"📈 Lead {lead.id} actualizado con agente {agent.username}")
+                # Mapear correctamente funnel_type a case_type
+                case_type_mapping = {
+                    'sales': 'sales',
+                    'support': 'support', 
+                    'recovery': 'recovery'
+                }
                 
-                # Asociar conversación al lead si no tiene uno
-                if not conversation.lead:
-                    conversation.lead = lead
-                    print(f"🔗 Conversación {conversation_id} asociada al lead {lead.id}")
+                mapped_case_type = case_type_mapping.get(conversation.funnel_type, 'sales')
+                print(f"🗺️ Mapeando {conversation.funnel_type} → {mapped_case_type}")
+                
+                # Buscar lead existente por contacto y case_type
+                existing_lead = Lead.objects.filter(
+                    contact=conversation.contact,
+                    case_type=mapped_case_type
+                ).first()
+                
+                if existing_lead:
+                    # Actualizar lead existente
+                    existing_lead.assigned_to = agent
+                    existing_lead.status = 'active'  # Reactivar si estaba cerrado
+                    existing_lead.notes = f'{existing_lead.notes}\n\nActualizado: Reasignado a {agent.username} el {timezone.now().strftime("%Y-%m-%d %H:%M")}'
+                    existing_lead.save()
+                    lead = existing_lead
+                    print(f"📈 Lead existente {lead.id} actualizado para {conversation.contact.display_name} - Agente: {agent.username}")
+                else:
+                    # Crear nuevo lead
+                    lead = Lead.objects.create(
+                        contact=conversation.contact,
+                        assigned_to=agent,
+                        case_type=mapped_case_type,
+                        status='new',
+                        notes=f'Lead creado automáticamente al asignar conversación a {agent.username} el {timezone.now().strftime("%Y-%m-%d %H:%M")}'
+                    )
+                    print(f"📈 Nuevo lead {lead.id} creado para {conversation.contact.display_name} - Tipo: {mapped_case_type} - Agente: {agent.username}")
+                
+                # Asociar conversación al lead
+                conversation.lead = lead
+                print(f"🔗 Conversación {conversation_id} asociada al lead {lead.id}")
+                
+                # Crear ActivityLog para el lead
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action='create_lead' if not existing_lead else 'update_lead',
+                    description=f'Lead {"creado" if not existing_lead else "actualizado"} automáticamente: {conversation.contact.display_name} - {mapped_case_type}'
+                )
         else:
             conversation.assigned_to = None
             
@@ -1899,6 +1945,65 @@ def assign_conversation_view(request, conversation_id):
             
             # Asignar al usuario actual
             conversation.assigned_to = request.user
+            
+            # 🎯 AUTO-CLASIFICAR SEGÚN EL ROL DEL USUARIO
+            agent = request.user
+            needs_classification = (
+                conversation.funnel_type == 'none' or 
+                not conversation.funnel_type or 
+                conversation.funnel_stage == 'none' or 
+                not conversation.funnel_stage
+            )
+            
+            if needs_classification:
+                if agent.role == 'sales':
+                    conversation.funnel_type = 'sales'
+                    conversation.funnel_stage = 'sales_initial'
+                elif agent.role == 'support':
+                    conversation.funnel_type = 'support'
+                    conversation.funnel_stage = 'support_initial'
+                else:
+                    # Para admin, usar ventas por defecto
+                    conversation.funnel_type = 'sales'
+                    conversation.funnel_stage = 'sales_initial'
+            
+            # 📈 CREAR LEAD AUTOMÁTICAMENTE
+            if conversation.funnel_type in ['sales', 'recovery', 'support']:
+                # Mapear correctamente funnel_type a case_type
+                case_type_mapping = {
+                    'sales': 'sales',
+                    'support': 'support', 
+                    'recovery': 'recovery'
+                }
+                
+                mapped_case_type = case_type_mapping.get(conversation.funnel_type, 'sales')
+                
+                # Buscar lead existente por contacto y case_type
+                existing_lead = Lead.objects.filter(
+                    contact=conversation.contact,
+                    case_type=mapped_case_type
+                ).first()
+                
+                if existing_lead:
+                    # Actualizar lead existente
+                    existing_lead.assigned_to = agent
+                    existing_lead.status = 'active'
+                    existing_lead.notes = f'{existing_lead.notes}\n\nActualizado: Reasignado a {agent.username} el {timezone.now().strftime("%Y-%m-%d %H:%M")}'
+                    existing_lead.save()
+                    lead = existing_lead
+                else:
+                    # Crear nuevo lead
+                    lead = Lead.objects.create(
+                        contact=conversation.contact,
+                        assigned_to=agent,
+                        case_type=mapped_case_type,
+                        status='new',
+                        notes=f'Lead creado automáticamente al auto-asignarse el {timezone.now().strftime("%Y-%m-%d %H:%M")}'
+                    )
+                
+                # Asociar conversación al lead
+                conversation.lead = lead
+            
             conversation.save()
             
             # Log de actividad
@@ -1906,7 +2011,7 @@ def assign_conversation_view(request, conversation_id):
                 user=request.user,
                 conversation=conversation,
                 action='assign_conversation',
-                description=f'Conversación asignada a {request.user.username}'
+                description=f'Conversación asignada a {request.user.username} y clasificada en {conversation.funnel_type}'
             )
             
             return JsonResponse({
