@@ -151,6 +151,9 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Configuración específica para red local
+MEDIA_DOMAIN = 'http://192.168.1.176:8000'  # Dominio base para archivos multimedia en red local
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
