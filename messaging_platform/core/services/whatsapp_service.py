@@ -610,6 +610,10 @@ class WhatsAppService:
             if existing_contact.platform_user_id != clean_from_number:
                 existing_contact.platform_user_id = clean_from_number
                 existing_contact.save()
+            
+            # Sincronizar con Google Contacts si no se ha hecho recientemente
+            self._try_sync_with_google_contacts(existing_contact)
+            
             return existing_contact
         
         # REGLA 3: Crear nuevo contacto internacional
@@ -622,6 +626,10 @@ class WhatsAppService:
         )
         
         print(f"✅ Nuevo contacto {country_name} creado: ID={contact.id}, phone={contact.phone}")
+        
+        # Intentar sincronizar con Google Contacts para contactos nuevos
+        self._try_sync_with_google_contacts(contact)
+        
         return contact
     
     def _merge_duplicate_conversations(self, main_contact):
@@ -663,4 +671,48 @@ class WhatsAppService:
                 
                 # Eliminar contacto duplicado
                 duplicate_contact.delete()
+    
+    def _try_sync_with_google_contacts(self, contact):
+        """Intentar sincronizar contacto con Google Contacts"""
+        try:
+            from django.utils import timezone
+            from datetime import timedelta
+            from ..models import GoogleContactsAuth
+            
+            # Solo sincronizar si:
+            # 1. No se ha sincronizado nunca, O
+            # 2. Han pasado más de 24 horas desde la última sincronización, O  
+            # 3. No tiene nombre de Google aún
+            should_sync = (
+                not contact.google_last_sync or 
+                (timezone.now() - contact.google_last_sync > timedelta(hours=24)) or
+                not contact.google_contact_name
+            )
+            
+            if not should_sync:
+                return
+            
+            # Buscar un usuario con Google Contacts configurado
+            google_auth = GoogleContactsAuth.objects.filter(
+                token_expires_at__gt=timezone.now()  # Token no expirado
+            ).first()
+            
+            if google_auth:
+                print(f"🔍 Intentando sincronizar contacto {contact.id} con Google Contacts...")
+                
+                # Intentar sincronización en segundo plano para evitar bloqueos
+                try:
+                    success = contact.sync_with_google_contacts(google_auth.user)
+                    if success:
+                        print(f"✅ Contacto {contact.id} sincronizado con Google: {contact.google_contact_name}")
+                    else:
+                        print(f"📝 Contacto {contact.id} no encontrado en Google Contacts")
+                except Exception as e:
+                    print(f"❌ Error sincronizando contacto {contact.id}: {e}")
+            else:
+                print("📝 No hay configuración de Google Contacts disponible")
+                
+        except Exception as e:
+            print(f"❌ Error en sincronización automática con Google: {e}")
+            # No lanzar excepción para evitar bloquear el procesamiento del mensaje
 

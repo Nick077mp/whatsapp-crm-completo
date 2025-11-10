@@ -193,6 +193,9 @@ CHANNEL_LAYERS = {
 # Session Settings
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_SAMESITE = 'Lax'  # Importante para OAuth callbacks
+SESSION_COOKIE_SECURE = False  # False para desarrollo local
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 
 # Login URLs
@@ -215,4 +218,21 @@ SESSION_COOKIE_HTTPONLY = True
 # SECURE_HSTS_SECONDS = 31536000
 # SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 # SECURE_HSTS_PRELOAD = True
+
+
+# Google Contacts API Configuration
+GOOGLE_OAUTH2_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', os.environ.get('GOOGLE_OAUTH2_CLIENT_ID', ''))
+GOOGLE_OAUTH2_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', os.environ.get('GOOGLE_OAUTH2_CLIENT_SECRET', ''))
+GOOGLE_OAUTH2_SCOPES = [
+    'https://www.googleapis.com/auth/contacts.readonly',
+    'https://www.googleapis.com/auth/userinfo.profile',
+]
+
+# Google OAuth URLs (basados en tu configuración actual)
+GOOGLE_OAUTH2_REDIRECT_URIS = [
+    'http://localhost:8000/auth/google/callback/',
+    'http://127.0.0.1:8000/auth/google/callback/',
+    'http://192.168.1.176:8000/auth/google/callback/',
+    'https://8000-isd3q9b53rtrwh3wsth2s-29d03aeb.manusvm.computer/auth/google/callback/',
+]
 

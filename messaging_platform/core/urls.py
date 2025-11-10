@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, webhook_views
+from . import views, webhook_views, google_contacts_views
 
 urlpatterns = [
     # Autenticación
@@ -18,6 +18,17 @@ urlpatterns = [
     path('funnels/', views.funnels_view, name='funnels'),
     path('recovery-dashboard/', views.recovery_dashboard_view, name='recovery_dashboard'),
     path('reports/', views.reports_view, name='reports'),
+    
+    # Google Contacts Integration
+    path('auth/google/', google_contacts_views.google_auth_start, name='google_auth_start'),
+    path('auth/google/callback/', google_contacts_views.google_auth_callback, name='google_auth_callback'),
+    path('auth/google/callback-alt/', google_contacts_views.google_auth_callback_alt, name='google_auth_callback_alt'),
+    path('auth/google/debug-callback/', google_contacts_views.debug_oauth_callback, name='debug_oauth_callback'),
+    path('api/google-contacts/status/', google_contacts_views.google_contacts_status, name='google_contacts_status'),
+    path('api/google-contacts/search/', google_contacts_views.search_google_contact, name='search_google_contact'),
+    path('api/google-contacts/sync/<int:contact_id>/', google_contacts_views.sync_contact_with_google, name='sync_contact_with_google'),
+    path('api/google-contacts/disconnect/', google_contacts_views.disconnect_google_contacts, name='disconnect_google_contacts'),
+    path('api/test-auth/', google_contacts_views.test_auth_status, name='test_auth_status'),
     
     # API endpoints
     path('api/leads/create/', views.api_create_lead, name='api_create_lead'),

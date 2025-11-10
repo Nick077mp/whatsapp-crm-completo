@@ -38,6 +38,12 @@ class Contact(models.Model):
     email = models.EmailField(blank=True, null=True)
     country = models.CharField(max_length=100, blank=True, null=True)
     profile_pic = models.URLField(blank=True, null=True)
+    
+    # Campos para Google Contacts
+    google_contact_name = models.CharField(max_length=255, blank=True, null=True, help_text="Nombre encontrado en Google Contacts")
+    google_contact_id = models.CharField(max_length=255, blank=True, null=True, help_text="ID del contacto en Google Contacts")
+    google_last_sync = models.DateTimeField(blank=True, null=True, help_text="Última vez que se sincronizó con Google Contacts")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -50,11 +56,51 @@ class Contact(models.Model):
     
     @property
     def display_name(self):
-        """Nombre para mostrar - exactamente como aparece en WhatsApp"""
+        """Nombre para mostrar - prioriza Google Contacts"""
+        # Prioridad 1: Nombre de Google Contacts
+        if self.google_contact_name and self.google_contact_name.strip():
+            return self.google_contact_name
+        
+        # Prioridad 2: Nombre original del contacto
         if self.name and self.name.strip():
             return self.name
-        # Mostrar el número exactamente como lo recibimos de WhatsApp
+            
+        # Prioridad 3: Número de teléfono
         return self.phone or "Usuario sin identificar"
+    
+    def sync_with_google_contacts(self, user=None):
+        """Sincronizar este contacto con Google Contacts"""
+        if not user:
+            # Si no se proporciona usuario, intentar con el primer usuario que tenga Google Contacts configurado
+            try:
+                google_auth = GoogleContactsAuth.objects.first()
+                if google_auth:
+                    user = google_auth.user
+                else:
+                    return False
+            except:
+                return False
+        
+        try:
+            from .services.google_contacts_service import GoogleContactsService
+            
+            service = GoogleContactsService(user)
+            phone_to_search = self.phone or self.platform_user_id
+            
+            if phone_to_search:
+                contact_info = service.search_contact_by_phone(phone_to_search)
+                
+                if contact_info:
+                    self.google_contact_name = contact_info.get('name')
+                    self.google_contact_id = contact_info.get('id')
+                    self.google_last_sync = timezone.now()
+                    self.save()
+                    return True
+                    
+        except Exception as e:
+            print(f"Error sincronizando contacto con Google: {e}")
+            
+        return False
     
     @property 
     def display_initials(self):
@@ -138,6 +184,37 @@ class Contact(models.Model):
         elif self.phone:
             return self.phone[0].upper()
         return "U"
+
+
+class GoogleContactsAuth(models.Model):
+    """Tokens OAuth2 de Google Contacts para cada usuario"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='google_contacts_auth')
+    access_token = models.TextField(help_text="Token de acceso de Google OAuth2")
+    refresh_token = models.TextField(blank=True, null=True, help_text="Token de refresh de Google OAuth2")
+    token_expires_at = models.DateTimeField(help_text="Fecha de expiración del token")
+    scopes = models.JSONField(default=list, help_text="Scopes autorizados")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'google_contacts_auth'
+    
+    def __str__(self):
+        return f"Google Contacts Auth - {self.user.username}"
+    
+    def is_token_expired(self):
+        """Verificar si el token ha expirado"""
+        from django.utils import timezone
+        return self.token_expires_at and timezone.now() >= self.token_expires_at
+    
+    def get_valid_token(self):
+        """Obtener token válido, refrescando si es necesario"""
+        if not self.is_token_expired():
+            return self.access_token
+            
+        # Aquí se implementaría la lógica de refresh del token
+        return None
 
 
 class RecoveryCase(models.Model):

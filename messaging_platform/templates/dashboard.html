@@ -78,6 +78,47 @@
     </div>
     {% endif %}
 
+    <!-- Configuración de Google Contacts -->
+    <div class="section-card">
+        <div class="section-header">
+            <h3>📞 Integración Google Contacts</h3>
+            <div id="google-contacts-status" class="integration-status">
+                <span class="status-loading">Verificando...</span>
+            </div>
+        </div>
+        <div class="integration-content">
+            <div id="google-contacts-connected" class="integration-connected" style="display: none;">
+                <div class="integration-info">
+                    <span class="status-badge status-success">✅ Conectado</span>
+                    <p>Los nombres de contactos se sincronizarán automáticamente desde Google Contacts cuando recibas mensajes nuevos.</p>
+                    <small>Última sincronización: <span id="google-last-sync">-</span></small>
+                </div>
+                <div class="integration-actions">
+                    <button class="btn btn-sm btn-outline-danger" onclick="disconnectGoogleContacts()">
+                        🔗 Desconectar
+                    </button>
+                </div>
+            </div>
+            
+            <div id="google-contacts-disconnected" class="integration-disconnected" style="display: none;">
+                <div class="integration-info">
+                    <span class="status-badge status-warning">⚠️ Desconectado</span>
+                    <p>Conecta tu cuenta de Google para mostrar automáticamente los nombres de tus contactos en las conversaciones.</p>
+                    <ul class="integration-benefits">
+                        <li>✅ Muestra nombres reales en lugar de números</li>
+                        <li>✅ Sincronización automática al recibir mensajes</li>
+                        <li>✅ Búsqueda de contactos por nombre</li>
+                    </ul>
+                </div>
+                <div class="integration-actions">
+                    <a href="{% url 'google_auth_start' %}" class="btn btn-primary">
+                        🔗 Conectar Google Contacts
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% if user.is_staff %}
     <!-- Vista Admin: Todas las conversaciones -->
     <div class="section-card">
@@ -474,6 +515,69 @@ function updateConversationCounts(data) {
         availableBadge.textContent = data.available_count + ' disponibles';
     }
 }
+
+// Google Contacts functions
+function checkGoogleContactsStatus() {
+    fetch('/api/google-contacts/status/')
+        .then(response => response.json())
+        .then(data => {
+            const statusDiv = document.getElementById('google-contacts-status');
+            const connectedDiv = document.getElementById('google-contacts-connected');
+            const disconnectedDiv = document.getElementById('google-contacts-disconnected');
+            
+            if (data.connected) {
+                statusDiv.innerHTML = '<span class="status-badge status-success">✅ Conectado</span>';
+                connectedDiv.style.display = 'block';
+                disconnectedDiv.style.display = 'none';
+                
+                // Mostrar fecha de expiración si existe
+                if (data.expires_at) {
+                    const expiryDate = new Date(data.expires_at);
+                    document.getElementById('google-last-sync').textContent = 
+                        `Token válido hasta ${expiryDate.toLocaleDateString()}`;
+                }
+            } else {
+                statusDiv.innerHTML = '<span class="status-badge status-warning">⚠️ Desconectado</span>';
+                connectedDiv.style.display = 'none';
+                disconnectedDiv.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error verificando Google Contacts:', error);
+            const statusDiv = document.getElementById('google-contacts-status');
+            statusDiv.innerHTML = '<span class="status-badge status-error">❌ Error</span>';
+        });
+}
+
+function disconnectGoogleContacts() {
+    if (confirm('¿Estás seguro de que quieres desconectar Google Contacts?')) {
+        fetch('/api/google-contacts/disconnect/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Google Contacts desconectado exitosamente');
+                checkGoogleContactsStatus();
+            } else {
+                alert('Error al desconectar: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al desconectar Google Contacts');
+        });
+    }
+}
+
+// Verificar estado al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+    checkGoogleContactsStatus();
+});
 </script>
 {% endblock %}
 

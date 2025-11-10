@@ -1,0 +1,8 @@
+# Configuración para Google Contacts API
+
+# Variables de entorno necesarias para Google OAuth2
+GOOGLE_OAUTH2_CLIENT_ID=tu_client_id_aqui.googleusercontent.com
+GOOGLE_OAUTH2_CLIENT_SECRET=tu_client_secret_aqui
+
+# Ejemplo para archivo .env o configuración del servidor
+# Copia estas variables y configura con tus valores reales desde Google Console
