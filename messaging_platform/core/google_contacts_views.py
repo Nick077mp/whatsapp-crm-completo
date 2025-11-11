@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
@@ -398,3 +399,48 @@ def debug_oauth_callback(request):
             messages.error(request, f'Error: {e}')
     
     return redirect('dashboard')
+
+
+@login_required
+@require_http_methods(["POST"])
+def force_sync_contact(request, contact_id):
+    """Forzar sincronización de un contacto específico con Google Contacts"""
+    try:
+        contact = Contact.objects.get(id=contact_id)
+        
+        # Verificar que el usuario tenga Google Contacts configurado
+        google_auth = GoogleContactsAuth.objects.filter(
+            user=request.user,
+            token_expires_at__gt=timezone.now()
+        ).first()
+        
+        if not google_auth:
+            return JsonResponse({
+                'success': False, 
+                'error': 'No tienes Google Contacts configurado o el token expiró'
+            })
+        
+        # Forzar sincronización reseteando la fecha
+        contact.google_last_sync = None
+        contact.save()
+        
+        # Ejecutar sincronización
+        result = contact.sync_with_google_contacts(request.user)
+        
+        if result:
+            return JsonResponse({
+                'success': True,
+                'message': f'Contacto sincronizado: {contact.google_contact_name or contact.display_name}',
+                'google_name': contact.google_contact_name,
+                'display_name': contact.display_name
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': 'Contacto no encontrado en Google Contacts'
+            })
+            
+    except Contact.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Contacto no encontrado'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

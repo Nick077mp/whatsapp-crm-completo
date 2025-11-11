@@ -5,6 +5,21 @@ Django settings for messaging_platform project.
 from pathlib import Path
 import os
 
+# Cargar variables de entorno desde archivo .env si existe
+env_file = Path(__file__).resolve().parent.parent / '.env'
+if env_file.exists():
+    print(f"📋 Cargando variables de entorno desde: {env_file}")
+    with open(env_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ.setdefault(key.strip(), value.strip())
+    print(f"🔑 Variables cargadas: GOOGLE_CLIENT_ID={'✓' if os.environ.get('GOOGLE_CLIENT_ID') else '✗'}")
+else:
+    print(f"⚠️ Archivo .env no encontrado en: {env_file}")
+    print("💡 Tip: Crea un archivo .env con tus variables de Google OAuth2")
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

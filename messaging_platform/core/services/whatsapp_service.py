@@ -681,11 +681,11 @@ class WhatsAppService:
             
             # Solo sincronizar si:
             # 1. No se ha sincronizado nunca, O
-            # 2. Han pasado más de 24 horas desde la última sincronización, O  
+            # 2. Han pasado más de 2 horas desde la última sincronización, O  
             # 3. No tiene nombre de Google aún
             should_sync = (
                 not contact.google_last_sync or 
-                (timezone.now() - contact.google_last_sync > timedelta(hours=24)) or
+                (timezone.now() - contact.google_last_sync > timedelta(hours=2)) or
                 not contact.google_contact_name
             )
             

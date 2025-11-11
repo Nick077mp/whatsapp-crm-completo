@@ -460,18 +460,10 @@ function openTemplatesModal() {
 }
 
 // Sistema de auto-refresh para mensajes
-let chatAutoRefreshEnabled = true;
 let chatAutoRefreshInterval = null;
 let chatLastMessageCount = {{ messages|length }};
 
 function checkForNewMessages() {
-    if (!chatAutoRefreshEnabled) {
-        console.log('⏸️ Auto-refresh pausado, omitiendo verificación');
-        return;
-    }
-    
-    console.log(`🔍 Verificando nuevos mensajes... (actual: ${chatLastMessageCount})`);
-    
     fetch(`/api/conversations/${conversationId}/messages/`, {
         method: 'GET',
         credentials: 'same-origin',
@@ -482,9 +474,7 @@ function checkForNewMessages() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            console.log(`📊 Respuesta API: ${data.messages.length} mensajes`);
             if (data.messages.length > chatLastMessageCount) {
-                console.log(`🔄 ¡${data.messages.length - chatLastMessageCount} nuevos mensajes detectados!`);
                 // Solo agregar los mensajes nuevos
                 const newMessages = data.messages.slice(chatLastMessageCount);
                 appendNewMessages(newMessages);
@@ -492,8 +482,6 @@ function checkForNewMessages() {
                 
                 // Actualizar estado de conversación si es necesario
                 updateConversationStatus(data.conversation_status);
-            } else {
-                console.log('✅ No hay mensajes nuevos');
             }
         } else {
             console.error('❌ Error en respuesta API:', data.error);
@@ -709,8 +697,6 @@ function startChatAutoRefresh() {
         clearInterval(chatAutoRefreshInterval);
     }
     chatAutoRefreshInterval = setInterval(checkForNewMessages, 3000); // Cada 3 segundos
-    console.log('✅ Chat auto-refresh activado - verificando cada 3 segundos');
-    console.log(`📊 Conteo inicial de mensajes: ${chatLastMessageCount}`);
 }
 
 // Función para ejecutar corrección de URLs después de cargar elementos
@@ -724,7 +710,6 @@ function stopChatAutoRefresh() {
     if (chatAutoRefreshInterval) {
         clearInterval(chatAutoRefreshInterval);
         chatAutoRefreshInterval = null;
-        console.log('⏸️ Chat auto-refresh pausado');
     }
 }
 
@@ -913,36 +898,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Corregir URLs de multimedia al cargar la página
     fixAllMediaUrls();
-    
-    // Pausar auto-refresh cuando el usuario está escribiendo
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.addEventListener('focus', function() {
-            chatAutoRefreshEnabled = false;
-            console.log('⏸️ Chat auto-refresh pausado (usuario escribiendo)');
-        });
-        
-        messageInput.addEventListener('blur', function() {
-            // Reanudar después de un pequeño delay para evitar conflictos
-            setTimeout(() => {
-                chatAutoRefreshEnabled = true;
-                console.log('▶️ Chat auto-refresh reanudado');
-            }, 1000);
-        });
-        
-        // También pausar mientras se está escribiendo
-        messageInput.addEventListener('keydown', function() {
-            chatAutoRefreshEnabled = false;
-        });
-        
-        messageInput.addEventListener('keyup', function() {
-            // Reanudar después de 2 segundos de inactividad
-            clearTimeout(this.typingTimer);
-            this.typingTimer = setTimeout(() => {
-                chatAutoRefreshEnabled = true;
-            }, 2000);
-        });
-    }
 });
 
 // Limpiar intervals al salir de la página

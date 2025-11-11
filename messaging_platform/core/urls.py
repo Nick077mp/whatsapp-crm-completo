@@ -27,6 +27,7 @@ urlpatterns = [
     path('api/google-contacts/status/', google_contacts_views.google_contacts_status, name='google_contacts_status'),
     path('api/google-contacts/search/', google_contacts_views.search_google_contact, name='search_google_contact'),
     path('api/google-contacts/sync/<int:contact_id>/', google_contacts_views.sync_contact_with_google, name='sync_contact_with_google'),
+    path('api/google-contacts/force-sync/<int:contact_id>/', google_contacts_views.force_sync_contact, name='force_sync_contact'),
     path('api/google-contacts/disconnect/', google_contacts_views.disconnect_google_contacts, name='disconnect_google_contacts'),
     path('api/test-auth/', google_contacts_views.test_auth_status, name='test_auth_status'),
     
