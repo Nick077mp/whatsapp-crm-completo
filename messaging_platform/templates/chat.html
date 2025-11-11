@@ -5,7 +5,9 @@
     <div class="page-header">
         <h2>Conversaciones</h2>
     </div>
+    
     <div class="chat-layout">
+        <!-- Columna izquierda: Lista de conversaciones -->
         <div class="conversations-sidebar">
             <div class="search-box">
                 <div class="search-form">
@@ -50,8 +52,49 @@
             </div>
         </div>
         
-        <!-- Contenido principal del chat -->
+        <!-- Columna derecha: Contenido principal -->
         <div class="chat-main">
+            <!-- Integración Google Contacts - Dentro de la columna derecha -->
+            <div class="google-contacts-section-fixed">
+                <div class="section-header-inline">
+                    <h4>📞 Integración Google Contacts</h4>
+                    <div id="google-contacts-status" class="integration-status">
+                        <span class="status-loading">Verificando...</span>
+                    </div>
+                </div>
+                <div class="integration-content">
+                    <div id="google-contacts-connected" class="integration-connected" style="display: none;">
+                        <div class="integration-info">
+                            <span class="status-badge status-success">✅ Conectado</span>
+                            <p>Los nombres de contactos se sincronizarán automáticamente desde Google Contacts cuando recibas mensajes nuevos.</p>
+                            <small>Última sincronización: <span id="google-last-sync">-</span></small>
+                        </div>
+                        <div class="integration-actions">
+                            <button class="btn btn-sm btn-outline-danger" onclick="disconnectGoogleContacts()">
+                                🔗 Desconectar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="google-contacts-disconnected" class="integration-disconnected" style="display: none;">
+                        <div class="integration-info">
+                            <span class="status-badge status-warning">⚠️ Desconectado</span>
+                            <p>Conecta tu cuenta de Google para mostrar automáticamente los nombres de tus contactos en las conversaciones.</p>
+                            <ul class="integration-benefits">
+                                <li>✅ Muestra nombres reales en lugar de números</li>
+                                <li>✅ Sincronización automática al recibir mensajes</li>
+                                <li>✅ Búsqueda de contactos por nombre</li>
+                            </ul>
+                        </div>
+                        <div class="integration-actions">
+                            <a href="{% url 'google_auth_start' %}" class="btn btn-primary">
+                                🔗 Conectar Google Contacts
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="chat-welcome">
                 <div class="welcome-content">
                     <h3>💬 Selecciona una conversación</h3>
@@ -60,11 +103,11 @@
                     <div class="quick-stats">
                         <div class="stat-item">
                             <span class="stat-number">{{ total_conversations }}</span>
-                            <span class="stat-label">Conversaciones totales</span>
+                            <span class="stat-label">CONVERSACIONES TOTALES</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-number">{{ conversations_needing_response }}</span>
-                            <span class="stat-label">Sin responder</span>
+                            <span class="stat-label">SIN RESPONDER</span>
                         </div>
                     </div>
                     
@@ -239,16 +282,18 @@
 .chat-main {
     flex: 1;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    align-items: stretch;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     min-height: 60vh;
+    padding: 20px;
 }
 
 .chat-welcome {
     text-align: center;
-    max-width: 500px;
-    padding: 40px 20px;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
 }
 
 .welcome-content h3 {
@@ -324,6 +369,97 @@
     background: linear-gradient(135deg, #0088cc, #0076b4);
 }
 
+/* Estilos para Google Contacts en Chat - Fija en la parte superior */
+.google-contacts-section-fixed {
+    margin-bottom: 20px;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-left: 4px solid #ff6b35;
+}
+
+.section-header-inline {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.section-header-inline h4 {
+    margin: 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.integration-status {
+    font-size: 0.9rem;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.status-badge.status-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.status-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-badge.status-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.status-loading {
+    color: #6c757d;
+    font-style: italic;
+}
+
+.integration-content {
+    margin-top: 15px;
+}
+
+.integration-info {
+    margin-bottom: 15px;
+}
+
+.integration-info p {
+    margin: 10px 0;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+.integration-info small {
+    color: #999;
+    font-size: 0.85rem;
+}
+
+.integration-benefits {
+    list-style: none;
+    padding-left: 0;
+    margin: 10px 0;
+}
+
+.integration-benefits li {
+    padding: 5px 0;
+    color: #555;
+    font-size: 0.9rem;
+}
+
+.integration-actions {
+    margin-top: 15px;
+}
+
 @media (max-width: 768px) {
     .chat-layout {
         flex-direction: column;
@@ -337,6 +473,10 @@
     .quick-stats {
         flex-direction: column;
         gap: 15px;
+    }
+    
+    .google-contacts-section-fixed {
+        padding: 15px;
     }
 }
 </style>
@@ -359,46 +499,51 @@ function openWhatsApp(whatsappNumber) {
 }
 
 function performSearch(query) {
-    const spinner = document.getElementById('searchSpinner');
+    const searchInput = document.getElementById('searchConversations');
     const clearBtn = document.getElementById('clearBtn');
-    const conversationsList = document.getElementById('conversationsList');
+    const searchSpinner = document.getElementById('searchSpinner');
     
-    // Mostrar/ocultar botón de limpiar
+    // Mostrar u ocultar botón de limpiar
     if (query.length > 0) {
         clearBtn.style.display = 'flex';
     } else {
         clearBtn.style.display = 'none';
-        // Restaurar conversaciones originales si no hay búsqueda
-        conversationsList.innerHTML = originalConversations;
+        // Si el query está vacío, restaurar lista original
+        document.getElementById('conversationsList').innerHTML = originalConversations;
+        return;
+    }
+    
+    // No buscar si el query es muy corto
+    if (query.length < 2) {
         return;
     }
     
     // Mostrar spinner
-    spinner.style.display = 'block';
+    searchSpinner.style.display = 'block';
     clearBtn.style.display = 'none';
     
+    // Realizar búsqueda
     fetch(`/api/conversations/search/?q=${encodeURIComponent(query)}`)
         .then(response => response.json())
         .then(data => {
-            spinner.style.display = 'none';
-            clearBtn.style.display = query.length > 0 ? 'flex' : 'none';
+            searchSpinner.style.display = 'none';
+            clearBtn.style.display = 'flex';
             
             if (data.success) {
-                displaySearchResults(data.conversations, query);
+                updateConversationsList(data.conversations, query);
             } else {
-                console.error('Error en búsqueda:', data.error);
                 showSearchError();
             }
         })
         .catch(error => {
             console.error('Error en búsqueda:', error);
-            spinner.style.display = 'none';
-            clearBtn.style.display = query.length > 0 ? 'flex' : 'none';
+            searchSpinner.style.display = 'none';
+            clearBtn.style.display = 'flex';
             showSearchError();
         });
 }
 
-function displaySearchResults(conversations, query) {
+function updateConversationsList(conversations, query) {
     const conversationsList = document.getElementById('conversationsList');
     
     if (conversations.length === 0) {
@@ -508,6 +653,82 @@ document.addEventListener('DOMContentLoaded', function() {
             clearSearch();
         }
     });
+    
+    // Verificar estado de Google Contacts al cargar
+    checkGoogleContactsStatus();
 });
+
+// Funciones de Google Contacts
+function checkGoogleContactsStatus() {
+    fetch('/api/google-contacts/status/')
+        .then(response => response.json())
+        .then(data => {
+            const statusDiv = document.getElementById('google-contacts-status');
+            const connectedDiv = document.getElementById('google-contacts-connected');
+            const disconnectedDiv = document.getElementById('google-contacts-disconnected');
+            
+            if (data.connected) {
+                statusDiv.innerHTML = '<span class="status-badge status-success">✅ Conectado</span>';
+                connectedDiv.style.display = 'block';
+                disconnectedDiv.style.display = 'none';
+                
+                // Mostrar fecha de expiración si existe
+                if (data.expires_at) {
+                    const expiryDate = new Date(data.expires_at);
+                    document.getElementById('google-last-sync').textContent = 
+                        `Token válido hasta ${expiryDate.toLocaleDateString()}`;
+                }
+            } else {
+                statusDiv.innerHTML = '<span class="status-badge status-warning">⚠️ Desconectado</span>';
+                connectedDiv.style.display = 'none';
+                disconnectedDiv.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error verificando Google Contacts:', error);
+            const statusDiv = document.getElementById('google-contacts-status');
+            statusDiv.innerHTML = '<span class="status-badge status-error">❌ Error</span>';
+        });
+}
+
+function disconnectGoogleContacts() {
+    if (confirm('¿Estás seguro de que quieres desconectar Google Contacts?')) {
+        fetch('/api/google-contacts/disconnect/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Google Contacts desconectado exitosamente');
+                checkGoogleContactsStatus();
+            } else {
+                alert('Error al desconectar: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al desconectar Google Contacts');
+        });
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 </script>
 {% endblock %}

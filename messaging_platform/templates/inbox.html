@@ -823,7 +823,8 @@ function classifyConversation(conversationId, funnelType) {
 }
 
 function viewConversation(conversationId) {
-    window.open(`/chat/${conversationId}/`, '_blank');
+    // Abrir en la misma pestaña para que el botón Volver funcione
+    window.location.href = `/chat/${conversationId}/`;
 }
 
 // Event listeners

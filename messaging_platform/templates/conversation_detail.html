@@ -240,6 +240,71 @@
 .message .text-muted {
     color: #555555 !important;
 }
+
+/* Estilos para el botón Llamar y dropdown */
+.call-dropdown-container {
+    position: relative;
+    display: inline-block;
+}
+
+.btn-call {
+    background: #ff6b35;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-call:hover {
+    background: #e55a2b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(255, 107, 53, 0.3);
+}
+
+.call-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 5px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 160px;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.dropdown-item {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: none;
+    background: white;
+    color: #333;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    transition: background 0.2s ease;
+}
+
+.dropdown-item:hover {
+    background: #f8f9fa;
+    color: #ff6b35;
+}
+
+.dropdown-item:active {
+    background: #e9ecef;
+}
 </style>
 {% endblock %}
 
@@ -247,7 +312,7 @@
 <div class="conversation-detail-container">
     <div class="conversation-header">
         <div class="header-left">
-            <a href="{% url 'dashboard' %}" class="btn btn-outline">← Volver al Dashboard</a>
+            <a href="javascript:void(0);" onclick="goBack()" class="btn btn-outline">← Volver</a>
             <h3>{{ conversation.contact.display_name }}</h3>
             <span class="badge">{{ conversation.contact.platform.name|title }}</span>
             {% if conversation.contact.platform.name == 'whatsapp' %}
@@ -258,6 +323,24 @@
             <a href="https://calendar.google.com" target="_blank" class="btn-calendar" title="Abrir Google Calendar">
                 📅 Calendario
             </a>
+            
+            <!-- Botón Llamar con dropdown -->
+            <div class="call-dropdown-container">
+                <button class="btn-call" onclick="toggleCallDropdown()" title="Llamar">
+                    📞 Llamar
+                </button>
+                <div id="callDropdown" class="call-dropdown" style="display: none;">
+                    <button class="dropdown-item" onclick="makeCall('support')">
+                        👥 Soporte
+                    </button>
+                    <button class="dropdown-item" onclick="makeCall('recovery')">
+                        🔄 Recuperación
+                    </button>
+                    <button class="dropdown-item" onclick="makeCall('sales')">
+                        💰 Ventas
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -342,6 +425,77 @@ function openWhatsApp(phoneNumber) {
     if (phoneNumber) {
         window.open(`https://wa.me/${phoneNumber}`, '_blank');
     }
+}
+
+function goBack() {
+    // Verificar si hay un referrer válido
+    if (document.referrer && document.referrer !== '') {
+        // Volver a la página anterior
+        window.history.back();
+    } else {
+        // Si no hay referrer, ir al dashboard por defecto
+        window.location.href = "{% url 'dashboard' %}";
+    }
+}
+
+// Funciones para el botón Llamar
+function toggleCallDropdown() {
+    const dropdown = document.getElementById('callDropdown');
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+// Cerrar dropdown si se hace clic fuera
+document.addEventListener('click', function(event) {
+    const container = document.querySelector('.call-dropdown-container');
+    const dropdown = document.getElementById('callDropdown');
+    
+    if (container && !container.contains(event.target)) {
+        dropdown.style.display = 'none';
+    }
+});
+
+function makeCall(agentType) {
+    // Cerrar el dropdown
+    document.getElementById('callDropdown').style.display = 'none';
+    
+    // Obtener el número de teléfono del contacto
+    const phoneNumber = '{{ conversation.contact.whatsapp_number|default:conversation.contact.platform_user_id }}';
+    
+    // Limpiar el número (quitar espacios, guiones, etc.)
+    const cleanNumber = phoneNumber.replace(/[\s\-\+]/g, '');
+    
+    // Preparar el body de la petición
+    const requestBody = {
+        number: cleanNumber,
+        agent: agentType
+    };
+    
+    // Mostrar indicador de carga
+    const originalBtn = event.target;
+    const originalText = originalBtn.innerHTML;
+    originalBtn.innerHTML = '⏳ Llamando...';
+    originalBtn.disabled = true;
+    
+    // Hacer la petición al webhook
+    fetch('https://driveria-n8n.cznnzb.easypanel.host/webhook/agent_call', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(data => {
+        console.log('Llamada iniciada:', data);
+        alert('✅ Llamada iniciada exitosamente a ' + cleanNumber + ' con agente: ' + agentType);
+        originalBtn.innerHTML = originalText;
+        originalBtn.disabled = false;
+    })
+    .catch(error => {
+        console.error('Error al iniciar llamada:', error);
+        alert('❌ Error al iniciar la llamada. Por favor intenta de nuevo.');
+        originalBtn.innerHTML = originalText;
+        originalBtn.disabled = false;
+    });
 }
 
 function getCookie(name) {
@@ -439,7 +593,7 @@ function loadMessages() {
         .then(data => {
             if (data.success) {
                 // Actualizar los mensajes (implementación simplificada)
-                location.reload();
+                updateMessagesDisplay(data.messages);
             }
         })
         .catch(error => console.error('Error al cargar mensajes:', error));
