@@ -1541,27 +1541,38 @@ def api_get_available_agents(request):
 
 @login_required
 def api_search_conversations(request):
-    """API para búsqueda de conversaciones en tiempo real - Unificada para chat e inbox"""
+    """API para búsqueda de conversaciones en tiempo real - Búsqueda por nombre y número"""
     try:
         search_query = request.GET.get('q', '').strip()
-        unassigned_only = request.GET.get('unassigned_only', 'false').lower() == 'true'
         
+        # Filtrar conversaciones activas
         conversations = Conversation.objects.select_related(
             'contact', 'contact__platform', 'assigned_to'
         ).filter(status='active')
         
-        # Si es para inbox, filtrar solo conversaciones sin asignar a usuario
-        if unassigned_only:
-            conversations = conversations.filter(assigned_to__isnull=True)
+        # Filtrar por departamento según el rol del usuario
+        if request.user.role == 'admin' or request.user.is_superuser:
+            # Admin ve todas las conversaciones
+            pass
+        elif request.user.role == 'support':
+            # Soporte ve solo conversaciones de soporte
+            conversations = conversations.filter(funnel_type='support')
+        elif request.user.role == 'sales':
+            # Ventas ve solo conversaciones de ventas
+            conversations = conversations.filter(funnel_type='sales')
         
+        # ✅ BÚSQUEDA INTELIGENTE - Igual que chat_view
         if search_query:
             # Limpiar el número de búsqueda (quitar espacios, guiones, paréntesis, etc.)
             clean_search = ''.join(filter(str.isdigit, search_query))
             
-            # Filtro por nombre (siempre incluido)
-            filters = Q(contact__name__icontains=search_query)
+            # 🔍 Filtro por NOMBRE (buscar en name Y google_contact_name)
+            filters = (
+                Q(contact__name__icontains=search_query) |
+                Q(contact__google_contact_name__icontains=search_query)
+            )
             
-            # Si hay dígitos en la búsqueda, agregar filtros de número inteligentes
+            # 🔍 Si hay dígitos, agregar filtros de NÚMERO inteligentes
             if clean_search:
                 # Convertir número limpio a patrón regex flexible
                 # Ejemplo: "3001234567" -> "3.*0.*0.*1.*2.*3.*4.*5.*6.*7"
@@ -1589,39 +1600,40 @@ def api_search_conversations(request):
                     Q(contact__platform_user_id__icontains=search_query)
                 )
             
+            # Aplicar filtros
             conversations = conversations.filter(filters)
         
-        conversations = conversations.order_by('-last_message_at')[:20]  # Limitar resultados
+        # Ordenar por prioridad: primero las que necesitan respuesta
+        conversations = conversations.order_by('-needs_response', '-last_message_at')[:20]
         
+        # Preparar resultados para el frontend
         results = []
         for conv in conversations:
-            conv_data = {
+            # Calcular si está vencida (más de 5 minutos sin respuesta)
+            is_overdue = False
+            if hasattr(conv, 'is_overdue'):
+                is_overdue = conv.is_overdue(minutes=5)
+            
+            results.append({
                 'id': conv.id,
                 'contact_name': conv.contact.display_name,
-                'contact_phone': conv.contact.phone or '',
                 'platform': conv.contact.platform.name,
                 'last_message_at': conv.last_message_at.strftime('%d/%m %H:%M') if conv.last_message_at else '',
-                'is_answered': conv.is_answered,
-                'whatsapp_number': conv.contact.whatsapp_number if conv.contact.platform.name == 'whatsapp' else None,
-                'platform_user_id': conv.contact.platform_user_id
-            }
-            
-            # Para inbox, agregar información adicional
-            if unassigned_only:
-                conv_data.update({
-                    'needs_response': getattr(conv, 'needs_response', False),
-                    'assigned_to': conv.assigned_to.username if conv.assigned_to else None,
-                    'funnel_type': conv.funnel_type or 'none'
-                })
-                
-            results.append(conv_data)
+                'whatsapp_number': conv.contact.phone or conv.contact.platform_user_id,
+                'platform_user_id': conv.contact.platform_user_id,
+                'is_overdue_5min': is_overdue
+            })
         
         return JsonResponse({
             'success': True,
             'conversations': results,
-            'query': search_query
+            'count': len(results)
         })
+        
     except Exception as e:
+        import traceback
+        print(f"❌ Error en api_search_conversations: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
             'success': False,
             'error': str(e)
